@@ -1,3 +1,6 @@
+#private calls data. can't be published
+ipnb/calls_data_week.tsv
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
