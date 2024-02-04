@@ -1,11 +1,20 @@
 # rolling_update_downtime
 ```mermaid
 classDiagram
-  RMSConnection
-  PeerConnection
-  RoomMeeting
-  RoomMeetingAssignment
-  NewNodePolicy
-  RandomNewNodePolicy
-  RoundRobinNewNodePolicy
+  note for RMSConnection "Room media session connection. Model a connection from client to media server"
+
+  class RMSConnection {
+  }
+  class PeerConnection {
+  }
+  class RoomMeeting {
+  }
+  class RoomMeetingAssignment {
+  }
+  class NewNodePolicy {
+  }
+  class RandomNewNodePolicy {
+  }
+  class RoundRobinNewNodePolicy {
+  }
 ```
