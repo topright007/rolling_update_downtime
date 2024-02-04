@@ -5,6 +5,7 @@ from rmsutils import *
 
 from RoomMeeting import *
 
+
 class RoomMeetingAssignments(ABC):
     nodeToRoomMeeting: dict[int, dict[datetime, list[str]]]
     roomMeetingToNode: dict[str, dict[datetime, int]]
@@ -12,16 +13,20 @@ class RoomMeetingAssignments(ABC):
     lastNodeDates: dict[int, datetime]
     lastRMDates: dict[str, datetime]
 
-    roomMeetingDict: dict[str, RoomMeeting] = {}
+    roomMeetingDict: dict[str, RoomMeeting]
+
+    nodesMaintenance: dict[datetime, set[int]]
 
     def __init__(self):
-        self.nodeToRoomMeeting = defaultdict(lambda :defaultdict(list))
+        self.nodeToRoomMeeting = defaultdict(lambda: defaultdict(list))
         self.roomMeetingToNode = defaultdict(lambda: defaultdict(int))
         self.lastNodeDates = {}
         self.lastRMDates = {}
+        self.roomMeetingDict = {}
+        self.nodesMaintenance = {}
 
     def __str__(self):
-        nodeToRoomMeetingResult = defaultdict(lambda :defaultdict(list))
+        nodeToRoomMeetingResult = defaultdict(lambda: defaultdict(list))
         for node, tsToMeetings in self.nodeToRoomMeeting.items():
             nodeToRoomMeetingResult[node] = {}
             for ts, rmids in tsToMeetings.items():
@@ -54,7 +59,6 @@ class RoomMeetingAssignments(ABC):
             lastRMDate = self.lastRMDates[rm.id]
             return self.roomMeetingToNode[rm.id][lastRMDate]
         return -1
-
 
     def assignRoomMeeting(self, rm: RoomMeeting, node: int, ts: datetime):
         curNode: int = self.getCurrentNode(rm, ts)
@@ -98,10 +102,28 @@ class RoomMeetingAssignments(ABC):
                 try:
                     prevNodeNewStateRMs.remove(rm.id)
                 except ValueError:
-                    raise Exception(f'Failed to remove {rm.id} by node {prevNodeIdx} ts {formatIsoDate(prevNodeLastStateTs)} and contents {prevNodeNewStateRMs}. It probably have not been assigned to the node')
+                    raise Exception(
+                        f'Failed to remove {rm.id} by node {prevNodeIdx} ts {formatIsoDate(prevNodeLastStateTs)} and contents {prevNodeNewStateRMs}. It probably have not been assigned to the node')
 
-                #if room meeting has been removed from the room, add record about it
+                # if room meeting has been removed from the room, add record about it
                 if prevNodeLastStateRMs != prevNodeNewStateRMs:
                     self.nodeToRoomMeeting[prevNodeIdx][ts] = prevNodeNewStateRMs
                     self.lastNodeDates[prevNodeIdx] = ts
                     self.lastRMDates[rm.id] = ts
+
+    def getNodesInMaintenance(self, ts: datetime) -> set[int]:
+        if len(self.nodesMaintenance.keys()) > 0:
+            lastMaintenanceTs = list(self.nodesMaintenance)[-1]
+            assert lastMaintenanceTs <= ts, f"Can not modify maintenance. Last maintenance TS ${lastMaintenanceTs} is newer than ${ts}"
+            return self.nodesMaintenance[lastMaintenanceTs].copy()
+        return set()
+
+    def startNodeMaintenance(self, node: int, ts: datetime):
+        nodesInMaintenance = self.getNodesInMaintenance(ts)
+        nodesInMaintenance.add(node)
+        self.nodesMaintenance[ts] = nodesInMaintenance
+
+    def endNodeMaintenance(self, node: int, ts: datetime):
+        nodesInMaintenance = self.getNodesInMaintenance(ts)
+        nodesInMaintenance.discard(node)
+        self.nodesMaintenance[ts] = nodesInMaintenance

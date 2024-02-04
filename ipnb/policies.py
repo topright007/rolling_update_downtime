@@ -9,12 +9,26 @@ class NewNodePolicy(ABC):
     def pickNodeForRoom(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
         raise 'not implemented'
 
+    def gracePeriod(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
+        raise 'not implemented'
+
+
+class ConstantGracePeriod(NewNodePolicy):
+    gracePeriodSec: int
+
+    def __init__(self, gracePeriodSec: int):
+        self.gracePeriodSec = gracePeriodSec
+
+    def gracePeriod(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
+        return self.gracePeriodSec
+
 
 # pick a new media server at random
-class RandomNewNodePolicy(NewNodePolicy):
+class RandomNewNodePolicy(ConstantGracePeriod):
     numNodes: int
 
-    def __init__(self, numNodes: int):
+    def __init__(self, gracePeriodSec: int, numNodes: int):
+        super().__init__(gracePeriodSec)
         self.numNodes = numNodes
 
     def pickNodeForRoom(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
@@ -22,23 +36,35 @@ class RandomNewNodePolicy(NewNodePolicy):
 
 
 # pick servers sequentially when new conference is needed
-class RoundRobinNewNodePolicy(NewNodePolicy):
-    lastSelectedRoundRobinNode = -1
+class RoundRobinNewNodePolicy(ConstantGracePeriod):
+    numNodes: int
+    lastSelectedRoundRobinNode: int
+
+    def __init__(self, gracePeriodSec: int, numNodes: int):
+        super().__init__(gracePeriodSec)
+        self.numNodes = numNodes
+        self.lastSelectedRoundRobinNode = -1
 
     def pickNodeForRoom(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
         return random.randrange(0, 1)
 
 
 # check out number of sessions on the nodes and pick the least loaded
-class LeastLoadedNewNodePolicy(NewNodePolicy):
+class LeastLoadedNewNodePolicy(ConstantGracePeriod):
+
+    def __init__(self, gracePeriodSec: int):
+        super().__init__(gracePeriodSec)
 
     def pickNodeForRoom(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
         return random.randrange(0, 1)
 
 
 # pick an island at random and pick the least loaded node on it
-class RandomIslandLeastLoadedNewNodePolicy(NewNodePolicy):
+class RandomIslandLeastLoadedNewNodePolicy(ConstantGracePeriod):
     lastSelectedRoundRobinNode = -1
+
+    def __init__(self, gracePeriodSec: int):
+        super().__init__(gracePeriodSec)
 
     def pickNodeForRoom(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
         return random.randrange(0, 1)

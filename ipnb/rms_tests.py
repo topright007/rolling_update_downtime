@@ -1,6 +1,3 @@
-from RMSConnection import RMSConnection
-
-from rmsexceptions import RMSConnectionCreationException
 from rmsops import *
 from RoomMeetingAssignments import *
 
