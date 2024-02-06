@@ -31,12 +31,10 @@ class NodeMaintenanceRecord:
 class MultiListTimestampTraverser:
     restartEventLists: list[list[RMSRestarterEvent]]
     restartEventListIndexes: list[int]
-    restartEventListLimits: list[int]
 
     def __init__(self, restartEventLists: list[list[RMSRestarterEvent]]):
         self.restartEventLists = restartEventLists
         self.restartEventListIndexes = [0] * len(restartEventLists)
-        self.restartEventListLimits = list(map(lambda theList: len(theList), restartEventLists))
 
     def lastTsReached(self):
         for i in range(0, len(self.restartEventListIndexes)):
@@ -50,14 +48,17 @@ class MultiListTimestampTraverser:
             minIndex: int = None
             for i in range(0, len(self.restartEventLists)):
                 # no more events of this type for now
-                if self.restartEventListIndexes[i] >= self.restartEventListLimits[i]:
+                currentList = self.restartEventLists[i]
+                currentListIndex = self.restartEventListIndexes[i]
+                currentListSize = len(currentList)
+                if currentListIndex >= currentListSize:
                     continue
-                eventTs = self.restartEventLists[i][self.restartEventListIndexes[i]].ts
+                eventTs = currentList[currentListIndex].ts
                 if minTs is None or eventTs < minTs:
                     minTs = eventTs
                     minIndex = i
 
-            # do the action that is next on the time scale and shift the pointer
+            # do the action that is next on the timescale and shift the pointer
             if minIndex is not None:
                 self.restartEventLists[minIndex][self.restartEventListIndexes[minIndex]].action()
                 self.restartEventListIndexes[minIndex] += 1

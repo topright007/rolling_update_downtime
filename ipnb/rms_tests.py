@@ -134,38 +134,51 @@ def run_tests(meetingOnTheSameBridgeIdleTimeout) :
 
 
 checker = 0
+listToTestAddition: list[RMSRestarterEvent] = []
+
+
+def checkAndInc(desired: int):
+    global checker
+    assert desired == checker, f"desired checker {desired} is not equal to actual {checker}"
+    checker += 1
+
+
+def checkAndIncAndScheduleCheck(desired: int, tsToSchedule: datetime, valToCheck: int):
+    global checker
+    assert desired == checker, f"desired checker {desired} is not equal to actual {checker}"
+    checker += 1
+    listToTestAddition.append(RMSRestarterEvent(tsToSchedule, lambda: checkAndInc(valToCheck)))
+
 
 def testTraverser():
     global checker
     checker = 0
 
-    def assertCheckerAndInc(desired: int):
-        global checker
-        assert desired == checker, f"desired checker {desired} is not equal to actual {checker}"
-        checker += 1
-
     lists = [
         [
-            RMSRestarterEvent(parseIsoDate('2023-10-04 15:54:00,000'), lambda: assertCheckerAndInc(0)),
-            RMSRestarterEvent(parseIsoDate('2023-10-04 16:00:00,000'), lambda: assertCheckerAndInc(6))
+            RMSRestarterEvent(parseIsoDate('2023-10-04 15:54:00,000'), lambda: checkAndInc(0)),
+            RMSRestarterEvent(parseIsoDate('2023-10-04 16:00:00,000'), lambda: checkAndInc(6))
         ],
         [
-            RMSRestarterEvent(parseIsoDate('2023-10-04 15:55:00,000'), lambda: assertCheckerAndInc(1)),
-            RMSRestarterEvent(parseIsoDate('2023-10-04 15:58:00,000'), lambda: assertCheckerAndInc(4)),
-            RMSRestarterEvent(parseIsoDate('2023-10-04 15:59:00,000'), lambda: assertCheckerAndInc(5))
+            RMSRestarterEvent(parseIsoDate('2023-10-04 15:55:00,000'), lambda: checkAndInc(1)),
+            RMSRestarterEvent(parseIsoDate('2023-10-04 15:58:00,000'), lambda: checkAndIncAndScheduleCheck(4, parseIsoDate('2023-10-04 16:03:00,000'), 9)),
+            RMSRestarterEvent(parseIsoDate('2023-10-04 15:59:00,000'), lambda: checkAndInc(5))
         ],
         [
-            RMSRestarterEvent(parseIsoDate('2023-10-04 15:56:00,000'), lambda: assertCheckerAndInc(2)),
-            RMSRestarterEvent(parseIsoDate('2023-10-04 15:57:00,000'), lambda: assertCheckerAndInc(3)),
-            RMSRestarterEvent(parseIsoDate('2023-10-04 16:01:00,000'), lambda: assertCheckerAndInc(7))
+            RMSRestarterEvent(parseIsoDate('2023-10-04 15:56:00,000'), lambda: checkAndInc(2)),
+            RMSRestarterEvent(parseIsoDate('2023-10-04 15:57:00,000'), lambda: checkAndInc(3)),
+            RMSRestarterEvent(parseIsoDate('2023-10-04 16:01:00,000'), lambda: checkAndInc(7))
         ],
         [
-            RMSRestarterEvent(parseIsoDate('2023-10-04 16:02:00,000'), lambda: assertCheckerAndInc(8))
+            RMSRestarterEvent(parseIsoDate('2023-10-04 16:02:00,000'), lambda: checkAndInc(8)),
+            RMSRestarterEvent(parseIsoDate('2023-10-04 16:04:00,000'), lambda: checkAndInc(10))
         ],
         [],
+        listToTestAddition
     ]
 
     MultiListTimestampTraverser(lists).traverse()
+    assert checker == 11, f"checker has not reached {11}. It is at {checker}"
     print("MultiListTimestampTraverser check - success")
 
 testTraverser()
