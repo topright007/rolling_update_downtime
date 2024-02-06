@@ -135,7 +135,7 @@ class RoomMeetingAssignments(ABC):
     def getNodesInMaintenance(self, ts: datetime) -> set[int]:
         if len(self.nodesMaintenance.keys()) > 0:
             lastMaintenanceTs = list(self.nodesMaintenance)[-1]
-            assert lastMaintenanceTs < ts, f"Can not modify maintenance. Last maintenance TS ${lastMaintenanceTs} is newer than ${ts}"
+            assert lastMaintenanceTs <= ts, f"Can not modify maintenance. Last maintenance TS ${lastMaintenanceTs} is newer than ${ts}"
             return self.nodesMaintenance[lastMaintenanceTs].copy()
         return set()
 
