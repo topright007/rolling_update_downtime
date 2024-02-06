@@ -28,6 +28,41 @@ class NodeMaintenanceRecord:
     node: int
 
 
+class MultiListTimestampTraverser:
+    restartEventLists: list[list[RMSRestarterEvent]]
+    restartEventListIndexes: list[int]
+    restartEventListLimits: list[int]
+
+    def __init__(self, restartEventLists: list[list[RMSRestarterEvent]]):
+        self.restartEventLists = restartEventLists
+        self.restartEventListIndexes = [0] * len(restartEventLists)
+        self.restartEventListLimits = list(map(lambda theList: len(theList), restartEventLists))
+
+    def lastTsReached(self):
+        for i in range(0, len(self.restartEventListIndexes)):
+            if self.restartEventListIndexes[i] < len(self.restartEventLists[i]):
+                return False
+        return True
+
+    def traverse(self):
+        while not self.lastTsReached():
+            minTs: datetime = None
+            minIndex: int = None
+            for i in range(0, len(self.restartEventLists)):
+                # no more events of this type for now
+                if self.restartEventListIndexes[i] >= self.restartEventListLimits[i]:
+                    continue
+                eventTs = self.restartEventLists[i][self.restartEventListIndexes[i]].ts
+                if minTs is None or eventTs < minTs:
+                    minTs = eventTs
+                    minIndex = i
+
+            # do the action that is next on the time scale and shift the pointer
+            if minIndex is not None:
+                self.restartEventLists[minIndex][self.restartEventListIndexes[minIndex]].action()
+                self.restartEventListIndexes[minIndex] += 1
+
+
 class RMSRestarter(ABC):
     assignments: RoomMeetingAssignments
 
@@ -92,11 +127,11 @@ class RMSRestarter(ABC):
         meetingByFinishTs.sort(key=lambda k: k.ts_finish)
 
         meetingStartEvents: list[RMSRestarterEvent] = list(map(
-            lambda meeting: RMSRestarterEvent(meeting.ts_start, lambda meeting: self.meetingStarted(meeting)),
+            lambda meeting: RMSRestarterEvent(meeting.ts_start, lambda: self.meetingStarted(meeting)),
             meetingByStartTs
         ))
         meetingFinishEvents: list[RMSRestarterEvent] = list(map(
-            lambda meeting: RMSRestarterEvent(meeting.ts_finish, lambda meeting: self.meetingStarted(meeting)),
+            lambda meeting: RMSRestarterEvent(meeting.ts_finish, lambda: self.meetingStarted(meeting)),
             meetingByFinishTs
         ))
 
@@ -112,26 +147,7 @@ class RMSRestarter(ABC):
             self.finishMaintenanceEvents
         ]
 
-        restartEventListIndexes: list[int] = [0] * len(restartEventLists)
-        restartEventListLimits: list[int] = list(map(lambda theList:len(theList), restartEventLists))
-
-        # when last meeting finishes, there's no downtime
-        while not self.lastTsReached(restartEventLists, restartEventListIndexes):
-            minTs:datetime = None
-            minIndex: int = None
-            for i in range(0, len(restartEventLists)):
-                #no more events of this type for now
-                if restartEventListIndexes[i] >= restartEventListLimits[i]:
-                    continue
-                eventTs = restartEventLists[i][restartEventListIndexes[i]].ts
-                if minTs is None or eventTs < minTs:
-                    minTs = eventTs
-                    minIndex = i
-
-            # do the action that is next on the time scale and shift the pointer
-            if minIndex is not None:
-                restartEventLists[minIndex][restartEventListIndexes[minIndex]].action()
-                restartEventListIndexes[minIndex] += 1
-
+        traverser = MultiListTimestampTraverser(restartEventLists)
+        traverser.traverse()
 
         return RMSRestartResult(0, datetime.now(), datetime.now())
