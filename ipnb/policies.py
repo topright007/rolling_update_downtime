@@ -13,27 +13,26 @@ class NewNodePolicy(ABC):
         raise 'not implemented'
 
 
-class ConstantGracePeriod(NewNodePolicy):
+class ConstantGracePeriodShardedCluster(NewNodePolicy):
     gracePeriodSec: int
+    shardsConfig: ShardsConfig
 
-    def __init__(self, gracePeriodSec: int):
+    def __init__(self, gracePeriodSec: int, shardsConfig: ShardsConfig):
         self.gracePeriodSec = gracePeriodSec
+        self.shardsConfig = shardsConfig
 
     def gracePeriod(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
         return self.gracePeriodSec
 
 
 # pick a new media server at random
-class RandomNewNodePolicy(ConstantGracePeriod):
-    numNodes: int
-
-    def __init__(self, gracePeriodSec: int, numNodes: int):
-        super().__init__(gracePeriodSec)
-        self.numNodes = numNodes
+class RandomNewNodePolicy(ConstantGracePeriodShardedCluster):
+    def __init__(self, gracePeriodSec: int, shardsConfig: ShardsConfig):
+        super().__init__(gracePeriodSec, shardsConfig)
 
     def pickNodeForRoom(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
         nodesInMaintenance = sorted(list(rmass.getNodesInMaintenance(ts)))
-        idxToPick = random.randrange(0, self.numNodes)
+        idxToPick = random.randrange(0, self.shardsConfig.numNodesGlobal())
         for inMaintenance in nodesInMaintenance:
             if idxToPick <= inMaintenance:
                 idxToPick += 1
@@ -41,7 +40,7 @@ class RandomNewNodePolicy(ConstantGracePeriod):
 
 
 # pick servers sequentially when new conference is needed
-class RoundRobinNewNodePolicy(ConstantGracePeriod):
+class RoundRobinNewNodePolicy(ConstantGracePeriodShardedCluster):
     numNodes: int
     lastSelectedRoundRobinNode: int
 
@@ -55,7 +54,7 @@ class RoundRobinNewNodePolicy(ConstantGracePeriod):
 
 
 # check out number of sessions on the nodes and pick the least loaded
-class LeastLoadedNewNodePolicy(ConstantGracePeriod):
+class LeastLoadedNewNodePolicy(ConstantGracePeriodShardedCluster):
 
     def __init__(self, gracePeriodSec: int):
         super().__init__(gracePeriodSec)
@@ -65,7 +64,7 @@ class LeastLoadedNewNodePolicy(ConstantGracePeriod):
 
 
 # pick an island at random and pick the least loaded node on it
-class RandomIslandLeastLoadedNewNodePolicy(ConstantGracePeriod):
+class RandomIslandLeastLoadedNewNodePolicy(ConstantGracePeriodShardedCluster):
     lastSelectedRoundRobinNode = -1
 
     def __init__(self, gracePeriodSec: int):

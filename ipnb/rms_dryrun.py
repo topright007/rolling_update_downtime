@@ -16,7 +16,8 @@ MAX_NUM_ROWS_FOR_DRYRUN = 500
 calls = pd.read_csv('calls_data_week.tsv', header=0, names=['msid','peer_id', 'room_id', 'rsid', 'ts_connected', 'ts_joined', 'ts_leave', 'ts_offer'], delimiter='\t', nrows=MAX_NUM_ROWS_FOR_DRYRUN)
 roomMeetings: list[RoomMeeting] = loadRoomMeetings(calls, 60)
 
-restarter = RMSRestarter(roomMeetings, [parseIsoDate('2023-10-04 16:00:00,000')], 10, RandomNewNodePolicy(60, 100))
+shardsConfig = ShardsConfig([10, 10, 10])
+restarter = RMSRestarter(roomMeetings, [parseIsoDate('2023-10-02 13:00:00,000')], 10, shardsConfig, RandomNewNodePolicy(600, shardsConfig))
 restartResult: list[RMSRestartResult] = restarter.measureDT()
 for dt in restartResult:
     print(f"downtime {formatIsoDate(dt.downtimeStart)} - {formatIsoDate(dt.downtimeFinish)}. Total DT: {dt.totalDTSec} seconds")

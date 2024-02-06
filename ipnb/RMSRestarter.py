@@ -71,6 +71,7 @@ class RMSRestarter(ABC):
     # each new downtime will cancel previous rollout
     startRolloutAt: list[datetime]
     disruptionBudget: int
+    shardsConfig: ShardsConfig
     newNodePolicy: NewNodePolicy
     meetings: list[RoomMeeting]
 
@@ -80,10 +81,11 @@ class RMSRestarter(ABC):
     finishMaintenanceEvents: list[RMSRestarterEvent] = []
 
     def __init__(self, meetings: list[RoomMeeting], startRolloutAt: list[datetime], disruptionBudget: int,
-                 policy: NewNodePolicy):
+                 shardsConfig: ShardsConfig, policy: NewNodePolicy):
         self.meetings = meetings
         self.startRolloutAt = startRolloutAt
         self.disruptionBudget = disruptionBudget
+        self.shardsConfig = shardsConfig
         self.newNodePolicy = policy
 
         self.assignments = RoomMeetingAssignments()
@@ -107,6 +109,7 @@ class RMSRestarter(ABC):
         pass
 
     def startRollout(self, ts: datetime):
+        print(f"{formatIsoDate(ts)}: starting rollout. ")
         pass
 
     @staticmethod

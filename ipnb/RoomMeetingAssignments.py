@@ -6,6 +6,28 @@ from rmsutils import *
 from RoomMeeting import *
 
 
+class ShardsConfig(ABC):
+    shards: list[int]
+
+    def __init__(self, shards: list[int]):
+        self.shards = shards
+
+    def pickGlobal(self, globalIndex:int,  globalIndexesInMaintenance: set[int]) -> int:
+        pass
+
+    def pickInCluster(self, clusterNumber: int, indexInCluster: int, globalIndexesInMaintenance: set[int]) -> int:
+        pass
+
+    def globalToCluster(self, globalNodeIndex: int) -> tuple[int, int]:
+        pass
+
+    def clusterToGlobal(self, clusterNumber: int, indexInCluster: int) -> int:
+        pass
+
+    def numNodesGlobal(self):
+        return sum(self.shards)
+
+
 class RoomMeetingAssignments(ABC):
     nodeToRoomMeeting: dict[int, dict[datetime, list[str]]]
     roomMeetingToNode: dict[str, dict[datetime, int]]
