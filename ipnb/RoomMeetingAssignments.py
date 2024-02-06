@@ -57,6 +57,7 @@ class RoomMeetingAssignments(ABC):
     def getCurrentNode(self, rm: RoomMeeting, ts: datetime) -> int:
         if rm.id in self.lastRMDates:
             lastRMDate = self.lastRMDates[rm.id]
+            assert lastRMDate < ts, f"Room Meeting was last accessed at {formatIsoDate(lastRMDate)}. Can not access it at {ts}"
             return self.roomMeetingToNode[rm.id][lastRMDate]
         return -1
 
@@ -84,14 +85,12 @@ class RoomMeetingAssignments(ABC):
         self.lastRMDates[rm.id] = ts
 
     def releaseRoomMeeting(self, rm: RoomMeeting, ts: datetime):
-        nodeAssignmentDates = self.roomMeetingToNode[rm.id].keys()
         if rm.id in self.lastRMDates:
             lastNodeAssignmentTs = self.lastRMDates[rm.id]
             assert lastNodeAssignmentTs <= ts, f"can not assign ts {ts}. TS {lastNodeAssignmentTs} is already assigned to room {rm.id}"
 
             prevNodeIdx = self.roomMeetingToNode[rm.id][lastNodeAssignmentTs]
 
-            prevNodeStateTimestamps = self.nodeToRoomMeeting[prevNodeIdx].keys()
             if prevNodeIdx in self.lastNodeDates:
                 prevNodeLastStateTs = self.lastNodeDates[prevNodeIdx]
                 assert prevNodeLastStateTs <= ts, f"can not assign ts {ts}. TS {prevNodeLastStateTs} is already assigned to node {prevNodeIdx}"
@@ -114,7 +113,7 @@ class RoomMeetingAssignments(ABC):
     def getNodesInMaintenance(self, ts: datetime) -> set[int]:
         if len(self.nodesMaintenance.keys()) > 0:
             lastMaintenanceTs = list(self.nodesMaintenance)[-1]
-            assert lastMaintenanceTs <= ts, f"Can not modify maintenance. Last maintenance TS ${lastMaintenanceTs} is newer than ${ts}"
+            assert lastMaintenanceTs < ts, f"Can not modify maintenance. Last maintenance TS ${lastMaintenanceTs} is newer than ${ts}"
             return self.nodesMaintenance[lastMaintenanceTs].copy()
         return set()
 

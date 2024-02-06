@@ -32,7 +32,12 @@ class RandomNewNodePolicy(ConstantGracePeriod):
         self.numNodes = numNodes
 
     def pickNodeForRoom(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
-        return random.randrange(0, self.numNodes)
+        nodesInMaintenance = sorted(list(rmass.getNodesInMaintenance(ts)))
+        idxToPick = random.randrange(0, self.numNodes)
+        for inMaintenance in nodesInMaintenance:
+            if idxToPick <= inMaintenance:
+                idxToPick += 1
+        return idxToPick
 
 
 # pick servers sequentially when new conference is needed

@@ -91,10 +91,14 @@ class RMSRestarter(ABC):
         self.nextMeetingIdx = 0
 
     def meetingStarted(self, rm: RoomMeeting):
-        pass
+        node = self.newNodePolicy.pickNodeForRoom(rm.ts_start, self.assignments)
+        self.assignments.assignRoomMeeting(rm, node, rm.ts_start)
+        print(f"{formatIsoDate(rm.ts_start)}: meeting started  {rm.id} on node {node}")
 
     def meetingFinished(self, rm: RoomMeeting):
-        pass
+        currentNode = self.assignments.getCurrentNode(rm, rm.ts_finish)
+        self.assignments.releaseRoomMeeting(rm, rm.ts_finish)
+        print(f"{formatIsoDate(rm.ts_finish)}: meeting finished {rm.id} on node {currentNode}")
 
     def nodeMaintenanceStarted(self, nodeId: int):
         pass
@@ -113,7 +117,7 @@ class RMSRestarter(ABC):
                 return False
         return True
 
-    def measureDT(self) -> RMSRestartResult:
+    def measureDT(self) -> list[RMSRestartResult]:
         # order meetings by start date and by end date
         # iterate meeting starts, meeting finishes and node maintenances by ts: assign and unassign meetings
         # (complexity: 2*M*log(M) to sort + 2*M*DISR_BUDGET to merge lists by ts with maintenances )
@@ -132,7 +136,7 @@ class RMSRestarter(ABC):
             meetingByStartTs
         ))
         meetingFinishEvents: list[RMSRestarterEvent] = list(map(
-            lambda meeting: RMSRestarterEvent(meeting.ts_finish, lambda: self.meetingStarted(meeting)),
+            lambda meeting: RMSRestarterEvent(meeting.ts_finish, lambda: self.meetingFinished(meeting)),
             meetingByFinishTs
         ))
 
@@ -151,4 +155,4 @@ class RMSRestarter(ABC):
         traverser = MultiListTimestampTraverser(restartEventLists)
         traverser.traverse()
 
-        return RMSRestartResult(0, datetime.now(), datetime.now())
+        return []
