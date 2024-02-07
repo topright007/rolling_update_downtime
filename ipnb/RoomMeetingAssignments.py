@@ -151,6 +151,9 @@ class RoomMeetingAssignments(ABC):
             return self.nodesMaintenance[lastMaintenanceTs].copy()
         return set()
 
+    def isNodeInMaintenance(self, nodeId: int, ts: datetime):
+        return nodeId in self.getNodesInMaintenance(ts)
+
     def startNodeMaintenance(self, node: int, ts: datetime):
         nodesInMaintenance = self.getNodesInMaintenance(ts)
         nodesInMaintenance.add(node)

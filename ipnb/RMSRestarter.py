@@ -128,7 +128,7 @@ class RMSRestarter(ABC):
     # It will be picked up by the next loop
     def tryFinishMaintenanceIfNoMoreMeetings(self, nodeId: int, ts: datetime):
         # node was not in grace
-        if nodeId not in self.nodesInGraceIndex:
+        if not self.assignments.isNodeInMaintenance(nodeId, ts):
             return
 
         # node still has meetings. grace continues
@@ -160,13 +160,15 @@ class RMSRestarter(ABC):
         self.finishGraceEvents[newFinishGraceEventIndexIndex] = graceFinishEvent
         self.nodesInGraceIndex[nodeId] = newFinishGraceEventIndexIndex
 
-
-
         graceFinishEvent.ts = ts
 
     def returnNodeToDuty(self, nodeId: int, ts: datetime):
         print(f"{formatIsoDate(ts)}: returning node {nodeId} to duty")
+
         self.assignments.endNodeMaintenance(nodeId, ts)
+        if nodeId in self.nodesInGraceIndex:
+            self.nodesInGraceIndex.pop(nodeId)
+
         self.disruptNodes(ts)
 
     def scheduleNodeStartup(self, nodeId: int, startupStarts: datetime):
