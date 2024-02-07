@@ -92,7 +92,7 @@ class RoomMeetingAssignments(ABC):
         assert ts >= lastMappedTs, f"requested timestamp {formatIsoDate(ts)} is before the last mapped ts {formatIsoDate(lastMappedTs)}"
 
         lastMapping = mappings[lastMappedTs]
-        print(f"{formatIsoDate(lastMappedTs)}: meetings on node {nodeId}: {mappings[lastMappedTs]}")
+        print(f"mapping: {formatIsoDate(lastMappedTs)}: meetings on node {nodeId}: {mappings[lastMappedTs]}")
         return len(lastMapping) > 0
 
     def assignRoomMeeting(self, rm: RoomMeeting, node: int, ts: datetime):

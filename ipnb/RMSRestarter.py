@@ -142,8 +142,8 @@ class RMSRestarter(ABC):
             f"does't correspond to the actual node ID in the event node {graceFinishEvent.nodeId}"
 
         newFinishGraceEventIndexIndex: int = 0
-        for i in range(finishGraceEventIndex-1, 0, -1):
-            #shift all events that should start after our new maintenance time to +1
+        for i in range(finishGraceEventIndex-1, -1, -1):
+            # shift all events that should start after our new maintenance time to +1
             if self.finishGraceEvents[i].ts > ts:
                 evt = self.finishGraceEvents[i]
                 newIndex = i+1
@@ -154,13 +154,23 @@ class RMSRestarter(ABC):
                 break
 
         print(f"maintenance of node {nodeId} shifted from {formatIsoDate(graceFinishEvent.ts)} "
-              f"to {formatIsoDate(ts)} beacuse there were no meetings")
+              f"to {formatIsoDate(ts)} because there were no meetings")
         # register the new event in the correct index and with a correct ts
         assert nodeId == graceFinishEvent.nodeId, f"bug found: nodeId {nodeId} does not correspoint to event node id {graceFinishEvent.nodeId}"
+        # reinit the event because we can't change lambda
+        graceFinishEvent = RMSFinishGraceEvent(
+            ts,
+            lambda: self.nodeGraceFinished(nodeId, ts),
+            nodeId
+        )
         self.finishGraceEvents[newFinishGraceEventIndexIndex] = graceFinishEvent
         self.nodesInGraceIndex[nodeId] = newFinishGraceEventIndexIndex
 
-        graceFinishEvent.ts = ts
+        if newFinishGraceEventIndexIndex > 0:
+            assert self.finishGraceEvents[newFinishGraceEventIndexIndex-1].ts <= self.finishGraceEvents[newFinishGraceEventIndexIndex].ts
+
+        if newFinishGraceEventIndexIndex < len(self.finishGraceEvents)-1:
+            assert self.finishGraceEvents[newFinishGraceEventIndexIndex+1].ts >= self.finishGraceEvents[newFinishGraceEventIndexIndex].ts
 
     def returnNodeToDuty(self, nodeId: int, ts: datetime):
         print(f"{formatIsoDate(ts)}: returning node {nodeId} to duty")
