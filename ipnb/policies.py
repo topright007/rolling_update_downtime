@@ -32,10 +32,11 @@ class RandomNewNodePolicy(ConstantGracePeriodShardedCluster):
 
     def pickNodeForRoom(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
         nodesInMaintenance = sorted(list(rmass.getNodesInMaintenance(ts)))
-        idxToPick = random.randrange(0, self.shardsConfig.numNodesGlobal())
+        idxToPick = random.randrange(0, self.shardsConfig.numNodesGlobal() - len(nodesInMaintenance))
         for inMaintenance in nodesInMaintenance:
-            if idxToPick <= inMaintenance:
+            if idxToPick >= inMaintenance:
                 idxToPick += 1
+        print(f"picked node {idxToPick}. Nodes in maintenance are {nodesInMaintenance}")
         return idxToPick
 
 

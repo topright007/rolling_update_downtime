@@ -23,6 +23,13 @@ class RMSRestarterEvent:
     action: Callable[[], None]
 
 
+class RMSFinishGraceEvent (RMSRestarterEvent):
+    nodeId: int
+
+    def __init__(self, ts: datetime, action: Callable[[], None], nodeId: int):
+        super().__init__(ts, action)
+        self.nodeId = nodeId
+
 @dataclass
 class NodeMaintenanceRecord:
     ts: datetime
@@ -72,19 +79,26 @@ class RMSRestarter(ABC):
     # each new downtime will cancel previous rollout
     startRolloutAt: list[datetime]
     disruptionBudget: int
+    nodeRestartsInSec: int
     shardsConfig: ShardsConfig
     newNodePolicy: NewNodePolicy
     meetings: list[RoomMeeting]
 
     # events to finish maintenance are generated when maintenance of a node is started
-    finishMaintenanceEvents: list[RMSRestarterEvent] = []
+    finishGraceEvents: list[RMSFinishGraceEvent] = []
+    #nodeId -> index in finishMaintenanceEvents
+    nodesInGraceIndex: dict[int, int] = {}
+
+    nodesStartupEvents: list[RMSRestarterEvent] = []
+
     nextNodeToRollout: int
 
-    def __init__(self, meetings: list[RoomMeeting], startRolloutAt: list[datetime], disruptionBudget: int,
+    def __init__(self, meetings: list[RoomMeeting], startRolloutAt: list[datetime], disruptionBudget: int, nodeRestartsInSec: int,
                  shardsConfig: ShardsConfig, policy: NewNodePolicy):
         self.meetings = meetings
         self.startRolloutAt = startRolloutAt
         self.disruptionBudget = disruptionBudget
+        self.nodeRestartsInSec = nodeRestartsInSec
         self.shardsConfig = shardsConfig
         self.newNodePolicy = policy
 
@@ -99,30 +113,96 @@ class RMSRestarter(ABC):
         currentNode = self.assignments.getCurrentNode(rm, rm.ts_finish)
         self.assignments.releaseRoomMeeting(rm, rm.ts_finish)
         print(f"{formatIsoDate(rm.ts_finish)}: meeting finished {rm.id} on node {currentNode}")
+        self.tryFinishMaintenanceIfNoMoreMeetings(currentNode, rm.ts_finish)
 
-    def nodeMaintenanceStarted(self, nodeId: int, ts: datetime):
-        print(f"{formatIsoDate(ts)}: started maintenance of node {nodeId}")
-        gracePeriod = timedelta(seconds=float(self.newNodePolicy.gracePeriod(ts, self.assignments)))
-        graceFinishes = ts + gracePeriod
-        self.finishMaintenanceEvents.append(RMSRestarterEvent(
-            graceFinishes,
-            lambda: self.nodeMaintenanceFinished(nodeId, graceFinishes)
+    def scheduleFinishGrace(self, nodeId: int, graceFinishesTs: datetime):
+        self.finishGraceEvents.append(RMSFinishGraceEvent(
+            graceFinishesTs,
+            lambda: self.nodeGraceFinished(nodeId, graceFinishesTs),
+            nodeId
         ))
+        self.nodesInGraceIndex[nodeId] = len(self.finishGraceEvents) - 1
+
+    # check if there are no more meetings on the node and schedule restart now if applicable
+    # this method will sink the event to the current ts in the list of fininsh grace events.
+    # It will be picked up by the next loop
+    def tryFinishMaintenanceIfNoMoreMeetings(self, nodeId: int, ts: datetime):
+        # node was not in grace
+        if nodeId not in self.nodesInGraceIndex:
+            return
+
+        # node still has meetings. grace continues
+        if self.assignments.nodeHasMeetings(nodeId, ts):
+            return
+
+        finishGraceEventIndex = self.nodesInGraceIndex[nodeId]
+        graceFinishEvent = self.finishGraceEvents[finishGraceEventIndex]
+        assert graceFinishEvent.nodeId == nodeId, \
+            f"bug found: node id in maintenance finish index node {nodeId} " \
+            f"does't correspond to the actual node ID in the event node {graceFinishEvent.nodeId}"
+
+        newFinishGraceEventIndexIndex: int = 0
+        for i in range(finishGraceEventIndex-1, 0, -1):
+            #shift all events that should start after our new maintenance time to +1
+            if self.finishGraceEvents[i].ts > ts:
+                evt = self.finishGraceEvents[i]
+                newIndex = i+1
+                self.finishGraceEvents[newIndex] = evt
+                self.nodesInGraceIndex[evt.nodeId] = newIndex
+                newFinishGraceEventIndexIndex = i
+            else:
+                break
+
+        print(f"maintenance of node {nodeId} shifted from {formatIsoDate(graceFinishEvent.ts)} "
+              f"to {formatIsoDate(ts)} beacuse there were no meetings")
+        # register the new event in the correct index and with a correct ts
+        assert nodeId == graceFinishEvent.nodeId, f"bug found: nodeId {nodeId} does not correspoint to event node id {graceFinishEvent.nodeId}"
+        self.finishGraceEvents[newFinishGraceEventIndexIndex] = graceFinishEvent
+        self.nodesInGraceIndex[nodeId] = newFinishGraceEventIndexIndex
+
+
+
+        graceFinishEvent.ts = ts
+
+    def returnNodeToDuty(self, nodeId: int, ts: datetime):
+        print(f"{formatIsoDate(ts)}: returning node {nodeId} to duty")
+        self.assignments.endNodeMaintenance(nodeId, ts)
+        self.disruptNodes(ts)
+
+    def scheduleNodeStartup(self, nodeId: int, startupStarts: datetime):
+        print(f"{formatIsoDate(startupStarts)}: started startup of node {nodeId}")
+        startupFinishes = startupStarts + timedelta(seconds=self.nodeRestartsInSec)
+        self.nodesStartupEvents.append(
+            RMSRestarterEvent(startupFinishes, lambda: self.returnNodeToDuty(nodeId, startupFinishes))
+        )
+
+
+    def nodeGraceStarted(self, nodeId: int, ts: datetime):
+        gracePeriod: timedelta
+
+        if self.assignments.nodeHasMeetings(nodeId, ts):
+            # if node has active meetings, it needs to wait for grace period, and then it will restart
+            gracePeriod = timedelta(seconds=float(self.newNodePolicy.gracePeriod(ts, self.assignments)))
+            downtimeFinishes = ts + gracePeriod
+            self.scheduleFinishGrace(nodeId, downtimeFinishes)
+            print(f"{formatIsoDate(ts)}: started grace period of node {nodeId}")
+        else:
+            print(f"{formatIsoDate(ts)}: grace not needed for node {nodeId}")
+            self.scheduleNodeStartup(nodeId, ts)
+
         self.assignments.startNodeMaintenance(nodeId, ts)
-        #todo: add a way to finish node maintenance when all meetings on it finish
 
     def disruptNodes(self, ts: datetime):
         while len(self.assignments.getNodesInMaintenance(ts)) < self.disruptionBudget and \
                 self.nextNodeToRollout < self.shardsConfig.numNodesGlobal():
-            self.nodeMaintenanceStarted(self.nextNodeToRollout, ts)
+            self.nodeGraceStarted(self.nextNodeToRollout, ts)
             self.nextNodeToRollout += 1
 
-    def nodeMaintenanceFinished(self, nodeId: int, ts: datetime):
-        print(f"{formatIsoDate(ts)}: finished maintenance of node {nodeId}")
-        self.assignments.endNodeMaintenance(nodeId, ts)
+    def nodeGraceFinished(self, nodeId: int, ts: datetime):
+        print(f"{formatIsoDate(ts)}: finished grace period of node {nodeId}")
+        self.scheduleNodeStartup(nodeId, ts)
         #todo: increase dt for those meetings that are still on the node. reassign meetings
-        self.disruptNodes(ts)
-        pass
+
 
     def startRollout(self, ts: datetime):
         #todo start multiple rollouts. register new downtime report for each
@@ -171,7 +251,8 @@ class RMSRestarter(ABC):
             meetingStartEvents,
             meetingFinishEvents,
             startRolloutEvents,
-            self.finishMaintenanceEvents
+            self.finishGraceEvents,
+            self.nodesStartupEvents
         ]
 
         traverser = MultiListTimestampTraverser(restartEventLists)

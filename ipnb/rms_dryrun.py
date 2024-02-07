@@ -17,7 +17,7 @@ calls = pd.read_csv('calls_data_week.tsv', header=0, names=['msid','peer_id', 'r
 roomMeetings: list[RoomMeeting] = loadRoomMeetings(calls, 60)
 
 shardsConfig = ShardsConfig([10, 10, 10])
-restarter = RMSRestarter(roomMeetings, [parseIsoDate('2023-10-02 13:00:00,000')], 10, shardsConfig, RandomNewNodePolicy(600, shardsConfig))
+restarter = RMSRestarter(roomMeetings, [parseIsoDate('2023-10-02 13:00:00,000')], 10, 120, shardsConfig, RandomNewNodePolicy(600, shardsConfig))
 restartResult: list[RMSRestartResult] = restarter.measureDT()
 for dt in restartResult:
     print(f"downtime {formatIsoDate(dt.downtimeStart)} - {formatIsoDate(dt.downtimeFinish)}. Total DT: {dt.totalDTSec} seconds")

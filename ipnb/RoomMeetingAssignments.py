@@ -12,7 +12,7 @@ class ShardsConfig(ABC):
     def __init__(self, shards: list[int]):
         self.shards = shards
 
-    def pickGlobal(self, globalIndex:int,  globalIndexesInMaintenance: set[int]) -> int:
+    def pickGlobal(self, globalIndex: int, globalIndexesInMaintenance: set[int]) -> int:
         pass
 
     def pickInCluster(self, clusterNumber: int, indexInCluster: int, globalIndexesInMaintenance: set[int]) -> int:
@@ -82,6 +82,18 @@ class RoomMeetingAssignments(ABC):
             assert lastRMDate < ts, f"Room Meeting was last accessed at {formatIsoDate(lastRMDate)}. Can not access it at {ts}"
             return self.roomMeetingToNode[rm.id][lastRMDate]
         return -1
+
+    def nodeHasMeetings(self, nodeId: int, ts: datetime) -> bool:
+        mappings = self.nodeToRoomMeeting[nodeId]
+        if len(mappings) == 0:
+            return False
+        lastMappedTs = list(mappings)[-1]
+
+        assert ts >= lastMappedTs, f"requested timestamp {formatIsoDate(ts)} is before the last mapped ts {formatIsoDate(lastMappedTs)}"
+
+        lastMapping = mappings[lastMappedTs]
+        print(f"{formatIsoDate(lastMappedTs)}: meetings on node {nodeId}: {mappings[lastMappedTs]}")
+        return len(lastMapping) > 0
 
     def assignRoomMeeting(self, rm: RoomMeeting, node: int, ts: datetime):
         curNode: int = self.getCurrentNode(rm, ts)
