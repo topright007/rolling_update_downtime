@@ -211,7 +211,14 @@ class RMSRestarter(ABC):
             self.nextNodeToRollout += 1
 
     def nodeGraceFinished(self, nodeId: int, ts: datetime):
-        print(f"{formatIsoDate(ts)}: finished grace period of node {nodeId}")
+        meetingsLeft = self.assignments.getNodeMeetings(nodeId, ts)
+        print(f"{formatIsoDate(ts)}: finished grace period of node {nodeId}. active meetings: {meetingsLeft}")
+        for meetingId in meetingsLeft:
+            rm = self.assignments.roomMeetingById(meetingId)
+            newNodeId = self.newNodePolicy.pickNodeForRoom(ts, self.assignments)
+            self.assignments.assignRoomMeeting(rm, newNodeId, ts)
+            print(f"{formatIsoDate(ts)}: reassigning room meeting {meetingId} from node {nodeId} to node {newNodeId}")
+
         self.scheduleNodeStartup(nodeId, ts)
         #todo: increase dt for those meetings that are still on the node. reassign meetings
 

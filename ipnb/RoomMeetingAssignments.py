@@ -79,21 +79,21 @@ class RoomMeetingAssignments(ABC):
     def getCurrentNode(self, rm: RoomMeeting, ts: datetime) -> int:
         if rm.id in self.lastRMDates:
             lastRMDate = self.lastRMDates[rm.id]
-            assert lastRMDate < ts, f"Room Meeting was last accessed at {formatIsoDate(lastRMDate)}. Can not access it at {ts}"
+            assert lastRMDate <= ts, f"Room Meeting was last accessed at {formatIsoDate(lastRMDate)}. Can not access it at {ts}"
             return self.roomMeetingToNode[rm.id][lastRMDate]
         return -1
 
     def nodeHasMeetings(self, nodeId: int, ts: datetime) -> bool:
+        return len(self.getNodeMeetings(nodeId, ts)) > 0
+
+    def getNodeMeetings(self, nodeId: int, ts: datetime) -> list[str]:
         mappings = self.nodeToRoomMeeting[nodeId]
         if len(mappings) == 0:
-            return False
+            return []
         lastMappedTs = list(mappings)[-1]
-
         assert ts >= lastMappedTs, f"requested timestamp {formatIsoDate(ts)} is before the last mapped ts {formatIsoDate(lastMappedTs)}"
-
-        lastMapping = mappings[lastMappedTs]
         print(f"mapping: {formatIsoDate(lastMappedTs)}: meetings on node {nodeId}: {mappings[lastMappedTs]}")
-        return len(lastMapping) > 0
+        return mappings[lastMappedTs]
 
     def assignRoomMeeting(self, rm: RoomMeeting, node: int, ts: datetime):
         curNode: int = self.getCurrentNode(rm, ts)
