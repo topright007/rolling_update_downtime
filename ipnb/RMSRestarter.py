@@ -11,13 +11,6 @@ from policies import *
 
 
 @dataclass
-class RMSRestartResult:
-    totalDTSec: int
-    downtimeStart: datetime
-    downtimeFinish: datetime
-
-
-@dataclass
 class NodeMaintenanceRecord:
     ts: datetime
     node: int
@@ -94,6 +87,18 @@ class MultiListTimestampTraverser:
                 self.restartEventListIndexes[minIndex] += 1
 
 
+class RMSSortedMeetings(ABC):
+    meetingByStartTs: list[RoomMeeting]
+    meetingByFinishTs: list[RoomMeeting]
+
+    def __init__(self, roomMeetings: list[RoomMeeting]):
+        self.meetingByStartTs = roomMeetings.copy()
+        self.meetingByStartTs.sort(key=lambda k: k.ts_start)
+
+        self.meetingByFinishTs = roomMeetings.copy()
+        self.meetingByFinishTs.sort(key=lambda k: k.ts_finish)
+
+
 class RMSRestarter(ABC):
     assignments: RoomMeetingAssignments
 
@@ -112,6 +117,7 @@ class RMSRestarter(ABC):
     nodesInGraceIndex: dict[int, int]
 
     nodesStartupEvents: list[RMSRestarterEvent]
+    sortedMeetings: RMSSortedMeetings
 
     nextNodeToRollout: int
 
@@ -126,6 +132,7 @@ class RMSRestarter(ABC):
         self.shardsConfig = shardsConfig
         self.newNodePolicy = policy
 
+        self.sortedMeetings = RMSSortedMeetings(self.meetings)
         self.assignments = RoomMeetingAssignments()
         self.finishGraceEvents = []
         self.nodesInGraceIndex = {}
@@ -271,7 +278,7 @@ class RMSRestarter(ABC):
                 return False
         return True
 
-    def measureDT(self) -> list[RMSRestartResult]:
+    def calculateRestarts(self) -> list[RMSRollout]:
         # order meetings by start date and by end date
         # iterate meeting starts, meeting finishes and node maintenances by ts: assign and unassign meetings
         # (complexity: 2*M*log(M) to sort + 2*M*DISR_BUDGET to merge lists by ts with maintenances )
@@ -279,19 +286,13 @@ class RMSRestarter(ABC):
         # when maintenance starts, close nodes for maintenance
         # when maintenance ends, assign all their unfinished meetings to a new node and calculate downtime by number of participants
 
-        meetingByStartTs = self.meetings.copy()
-        meetingByStartTs.sort(key=lambda k: k.ts_start)
-
-        meetingByFinishTs = self.meetings.copy()
-        meetingByFinishTs.sort(key=lambda k: k.ts_finish)
-
         meetingStartEvents: list[RMSRestarterEvent] = list(map(
             lambda meeting: RMSRestarterEvent(meeting.ts_start, lambda: self.meetingStarted(meeting)),
-            meetingByStartTs
+            self.sortedMeetings.meetingByStartTs
         ))
         meetingFinishEvents: list[RMSRestarterEvent] = list(map(
             lambda meeting: RMSRestarterEvent(meeting.ts_finish, lambda: self.meetingFinished(meeting)),
-            meetingByFinishTs
+            self.sortedMeetings.meetingByFinishTs
         ))
 
         startRolloutEvents: list[RMSRestarterEvent] = list(map(
@@ -310,4 +311,4 @@ class RMSRestarter(ABC):
         traverser = MultiListTimestampTraverser(restartEventLists)
         traverser.traverse()
 
-        return []
+        return self.rollouts
