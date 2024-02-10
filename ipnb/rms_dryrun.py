@@ -12,6 +12,15 @@ from PeerConnection import *
 
 from rmsops import *
 
+root = logging.getLogger()
+root.setLevel(logging.INFO)
+
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+root.addHandler(handler)
+
 MAX_NUM_ROWS_FOR_DRYRUN = 500
 # MAX_NUM_ROWS_FOR_DRYRUN = 5000000000000
 
@@ -25,4 +34,4 @@ shardsConfig = ShardsConfig([10, 10, 10])
 restarter = RMSRestarter(roomMeetings, [parseIsoDate('2023-10-02 13:00:00,000')], 10, 120, shardsConfig, RandomNewNodePolicy(600, shardsConfig))
 restartResult: list[RMSRollout] = restarter.calculateRestarts()
 chart = IntegratingDTClacModel(restarter.assignments, restartResult, restarter.sortedMeetings, PEER_IDLE_TIMEOUT_SEC).totalDowntime()
-print(f"Total downtime is {chart.totalDT}")
+root.info(f"Total downtime is {chart.totalDT}")

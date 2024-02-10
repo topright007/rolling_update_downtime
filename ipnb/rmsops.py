@@ -1,6 +1,8 @@
+import logging
+
 from RoomMeeting import *
 
-
+_logger = logging.getLogger("rmsops")
 def splitRoomMeetings(sameRoomRMSConnectionsLocal, meetingOnTheSameBridgeIdleTimeoutSec) -> list[RoomMeeting]:
     resultRoomMeetings = []
 
@@ -47,6 +49,6 @@ def loadRoomMeetings(calls, meetingOnTheSameBridgeIdleTimeoutSec):
                     raise f"unknown reason {e.reason}"
 
     roomMeetings = splitRoomMeetings(sameRoomRMSConnections, meetingOnTheSameBridgeIdleTimeoutSec)
-    print(f"Loaded {calls.shape[0]} rms into {len(roomMeetings)} room meetings. "
+    _logger.info(f"Loaded {calls.shape[0]} rms into {len(roomMeetings)} room meetings. "
           f"Total errors joined: {len(errorsJoined)}, connected: {len(errorsConnected)}, leave: {len(errorsLeave)}")
     return roomMeetings

@@ -1,8 +1,10 @@
 import abc
+import logging
 import random
 
 from RoomMeetingAssignments import *
 
+_logger = logging.getLogger("policies")
 
 class NewNodePolicy(ABC):
     @abc.abstractmethod
@@ -36,7 +38,7 @@ class RandomNewNodePolicy(ConstantGracePeriodShardedCluster):
         for inMaintenance in nodesInMaintenance:
             if idxToPick >= inMaintenance:
                 idxToPick += 1
-        print(f"picked node {idxToPick}. Nodes in maintenance are {nodesInMaintenance}")
+        _logger.debug(f"picked node {idxToPick}. Nodes in maintenance are {nodesInMaintenance}")
         return idxToPick
 
 

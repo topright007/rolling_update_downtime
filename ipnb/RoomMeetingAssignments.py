@@ -1,3 +1,4 @@
+import logging
 from abc import ABC
 from collections import defaultdict
 from datetime import datetime
@@ -5,6 +6,7 @@ from rmsutils import *
 
 from RoomMeeting import *
 
+_logger = logging.getLogger("RoomMeetingAssignments")
 
 class ShardsConfig(ABC):
     shards: list[int]
@@ -92,7 +94,7 @@ class RoomMeetingAssignments(ABC):
             return []
         lastMappedTs = list(mappings)[-1]
         assert ts >= lastMappedTs, f"requested timestamp {formatIsoDate(ts)} is before the last mapped ts {formatIsoDate(lastMappedTs)}"
-        print(f"mapping: {formatIsoDate(lastMappedTs)}: meetings on node {nodeId}: {mappings[lastMappedTs]}")
+        _logger.debug(f"mapping: {formatIsoDate(lastMappedTs)}: meetings on node {nodeId}: {mappings[lastMappedTs]}")
         return mappings[lastMappedTs]
 
     def assignRoomMeeting(self, rm: RoomMeeting, node: int, ts: datetime):
