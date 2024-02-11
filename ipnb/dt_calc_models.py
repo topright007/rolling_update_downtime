@@ -5,6 +5,7 @@ import pandas as pd
 from RoomMeetingAssignments import *
 from RMSRestarter import *
 
+_logger = logging.getLogger("dt_calc_models")
 
 @dataclass
 class RMSDowntimeChart(ABC):
@@ -50,16 +51,31 @@ class IntegratingDTClacModel(DTCalcModel):
         super().__init__(assignments, rollouts, sortedMeetings)
         self.peerIdleTimeoutSec = peerIdleTimeoutSec
 
+    def floorTime(self, toFloor: datetime, freqSec: int):
+        epochSeconds = int(toFloor.timestamp())
+        epochSeconds = int(epochSeconds / freqSec) * freqSec
+        return datetime.fromtimestamp(epochSeconds)
+
     def totalDowntime(self) -> RMSDowntimeChart:
+        _logger.info("Starting calculation of total downtime via integrating model")
         freq = f'{self.peerIdleTimeoutSec}s'
         pcBuckets: dict[datetime, list[PeerConnection]] = defaultdict(list)
         # index
         for rm in self.sortedMeetings.meetingByStartTs:
             for pc in rm.peerConnections:
-                join_floor = pd.Timestamp(pc.ts_joined).floor(freq)
-                leave_floor = pd.Timestamp(pc.ts_leave).floor(freq)
-                for ts in list(pd.date_range(join_floor, leave_floor, freq=freq)):
-                    pcBuckets[ts].append(pc)
+                join_floor = self.floorTime(pc.ts_joined, self.peerIdleTimeoutSec)
+                leave_floor = self.floorTime(pc.ts_leave, self.peerIdleTimeoutSec)
+                ts = join_floor.timestamp()
+                leave_timestamp = leave_floor.timestamp()
+                while ts < leave_timestamp:
+                    pcBuckets[datetime.fromtimestamp(ts)].append(pc)
+                    ts += self.peerIdleTimeoutSec
+
+                # join_floor = pd.Timestamp(pc.ts_joined).floor(freq)
+                # leave_floor = pd.Timestamp(pc.ts_leave).floor(freq)
+                # for ts in list(pd.date_range(join_floor, leave_floor, freq=freq)):
+                #     pcBuckets[ts].append(pc)
+        _logger.info("Finished indexing of active users by time buckets")
 
         dtIncrements: dict[datetime, float] = defaultdict(lambda: 0)
         for rollout in self.rollouts:
@@ -69,4 +85,5 @@ class IntegratingDTClacModel(DTCalcModel):
                 dtDelta = float(len(dt.rm.peerConnections)) / float(num_pc)
                 dtIncrements[dt_floor] += dtDelta
 
+        _logger.info("Finished calculation of total downtime in integrating model")
         return RMSDowntimeChart(dtIncrements)

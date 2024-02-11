@@ -55,10 +55,12 @@ class RMSFinishGraceEvent (RMSRestarterEvent):
 class MultiListTimestampTraverser:
     restartEventLists: list[list[RMSRestarterEvent]]
     restartEventListIndexes: list[int]
+    lastReportedRealTs: datetime
 
     def __init__(self, restartEventLists: list[list[RMSRestarterEvent]]):
         self.restartEventLists = restartEventLists
         self.restartEventListIndexes = [0] * len(restartEventLists)
+        self.lastReportedRealTs = None
 
     def lastTsReached(self):
         for i in range(0, len(self.restartEventListIndexes)):
@@ -67,6 +69,7 @@ class MultiListTimestampTraverser:
         return True
 
     def traverse(self):
+        _logger.info(f"Started traversal of events")
         while not self.lastTsReached():
             minTs: datetime = None
             minIndex: int = None
@@ -84,8 +87,12 @@ class MultiListTimestampTraverser:
 
             # do the action that is next on the timescale and shift the pointer
             if minIndex is not None:
+                if self.lastReportedRealTs is None or (datetime.now() - self.lastReportedRealTs).total_seconds() > 5:
+                    self.lastReportedRealTs = datetime.now()
+                    _logger.info(f"Processing event at {formatIsoDate(self.restartEventLists[minIndex][self.restartEventListIndexes[minIndex]].ts)}")
                 self.restartEventLists[minIndex][self.restartEventListIndexes[minIndex]].action()
                 self.restartEventListIndexes[minIndex] += 1
+        _logger.info(f"Finished traversal of events")
 
 
 class RMSSortedMeetings(ABC):
@@ -287,19 +294,24 @@ class RMSRestarter(ABC):
         # when maintenance starts, close nodes for maintenance
         # when maintenance ends, assign all their unfinished meetings to a new node and calculate downtime by number of participants
 
+        _logger.info(f"Preparing start events: {len(self.sortedMeetings.meetingByStartTs)}")
         meetingStartEvents: list[RMSRestarterEvent] = list(map(
             lambda meeting: RMSRestarterEvent(meeting.ts_start, lambda: self.meetingStarted(meeting)),
             self.sortedMeetings.meetingByStartTs
         ))
+        _logger.info(f"Preparing finish events: {len(self.sortedMeetings.meetingByStartTs)}")
         meetingFinishEvents: list[RMSRestarterEvent] = list(map(
             lambda meeting: RMSRestarterEvent(meeting.ts_finish, lambda: self.meetingFinished(meeting)),
             self.sortedMeetings.meetingByFinishTs
         ))
 
+        _logger.info(f"Preparing rollout events: {len(self.startRolloutAt)}")
         startRolloutEvents: list[RMSRestarterEvent] = list(map(
             lambda rolloutTs: RMSRestarterEvent(rolloutTs, lambda: self.startRollout(rolloutTs)),
             self.startRolloutAt
         ))
+
+        _logger.info(f"Meeting dates range: {formatIsoDate(self.sortedMeetings.meetingByStartTs[0].ts_start)} - {formatIsoDate(self.sortedMeetings.meetingByFinishTs[-1].ts_finish)}")
 
         restartEventLists: list[list[RMSRestarterEvent]] = [
             meetingStartEvents,
