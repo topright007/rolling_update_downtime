@@ -21,7 +21,7 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 handler.setFormatter(formatter)
 root.addHandler(handler)
 
-MAX_NUM_ROWS_FOR_DRYRUN = 500000
+MAX_NUM_ROWS_FOR_DRYRUN = 50000
 # MAX_NUM_ROWS_FOR_DRYRUN = 5000000000000
 
 MEETING_ON_SAME_BRIDGE_IDLE_TIMEOUT = 60
@@ -32,7 +32,8 @@ root.info(f"Loaded {len(calls)} events")
 roomMeetings: list[RoomMeeting] = loadRoomMeetings(calls, MEETING_ON_SAME_BRIDGE_IDLE_TIMEOUT)
 
 shardsConfig = ShardsConfig([10, 10, 10])
-restarter = RMSRestarter(roomMeetings, [parseIsoDate('2023-10-02 13:00:00,000')], 10, 120, shardsConfig, RandomNewNodePolicy(600, shardsConfig))
+restarter = RMSRestarter(roomMeetings, [parseIsoDate('2023-10-02 13:00:00,000')], 3, 120, shardsConfig, RandomNewNodePolicy(2*30*60, shardsConfig))
 restartResult: list[RMSRollout] = restarter.calculateRestarts()
 chart = IntegratingDTClacModel(restarter.assignments, restartResult, restarter.sortedMeetings, PEER_IDLE_TIMEOUT_SEC).totalDowntime()
 root.info(f"Total downtime is {chart.totalDT}")
+chart.serialize("result.tsv")

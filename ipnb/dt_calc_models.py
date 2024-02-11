@@ -7,20 +7,57 @@ from RMSRestarter import *
 
 _logger = logging.getLogger("dt_calc_models")
 
+
+@dataclass
+class RMSDowntimeDT(ABC):
+    ts: datetime
+    dt: float
+    rmInterrupted: int
+    pcInterrupted: int
+
+    def __init__(self):
+        self.dt = 0
+        self.rmInterrupted = 0
+        self.pcInterrupted = 0
+
+
 @dataclass
 class RMSDowntimeChart(ABC):
     dates: list[datetime]
+    rmInterrupted: list[int]
+    pcInterrupted: list[int]
     dts: list[float]
     totalDT: float
 
-    def __init__(self, unordered: dict[datetime, float]):
+    def __init__(self, unorderedData: dict[datetime, RMSDowntimeDT] = None, sourceFname: str = None):
         self.dates = []
         self.dts = []
+        self.rmInterrupted = []
+        self.pcInterrupted = []
         self.totalDT = 0
-        for date, dt in sorted(unordered.items()):
-            self.dates.append(date)
-            self.dts.append(dt)
-            self.totalDT += dt
+        if unorderedData is not None:
+            for date, dt in sorted(unorderedData.items()):
+                self.dates.append(date)
+                self.dts.append(dt.dt)
+                self.rmInterrupted.append(dt.rmInterrupted)
+                self.pcInterrupted.append(dt.pcInterrupted)
+                self.totalDT += dt.dt
+        elif sourceFname is not None:
+            self.parse(sourceFname)
+        else:
+            raise "unorderedData or sourceFname are required"
+
+    def serialize(self, fname: str):
+        df = pd.DataFrame(data={'dates': self.dates, 'dts': self.dts})
+        df.to_csv(fname, index=False, sep='\t')
+
+    def parse(self, fname: str):
+        df = pd.read_csv(fname, header=0,
+                    names=['dates', 'dts'],
+                    delimiter='\t')
+        self.dates = list(map(lambda dat: parseIsoDate(dat), df['dates']))
+        self.dts = df['dts']
+        self.totalDT = sum(self.dts)
 
 
 class DTCalcModel(ABC):
@@ -56,34 +93,43 @@ class IntegratingDTClacModel(DTCalcModel):
         epochSeconds = int(epochSeconds / freqSec) * freqSec
         return datetime.fromtimestamp(epochSeconds)
 
+
+    def addToFlooredBuckets(self, begin: datetime, end: datetime, buckets: dict[datetime, any], toAdd: any):
+        rm_start_floor = self.floorTime(begin, self.peerIdleTimeoutSec)
+        rm_finish_floor = self.floorTime(end, self.peerIdleTimeoutSec)
+        ts = rm_start_floor.timestamp()
+        leave_timestamp_sec = rm_finish_floor.timestamp()
+        while ts < leave_timestamp_sec:
+            buckets[datetime.fromtimestamp(ts)].append(toAdd)
+            ts += self.peerIdleTimeoutSec
+
+
     def totalDowntime(self) -> RMSDowntimeChart:
         _logger.info("Starting calculation of total downtime via integrating model")
         freq = f'{self.peerIdleTimeoutSec}s'
         pcBuckets: dict[datetime, list[PeerConnection]] = defaultdict(list)
+        rmBuckets: dict[datetime, list[RoomMeeting]] = defaultdict(list)
+
         # index
         for rm in self.sortedMeetings.meetingByStartTs:
+            self.addToFlooredBuckets(rm.ts_start, rm.ts_finish, rmBuckets, rm)
             for pc in rm.peerConnections:
-                join_floor = self.floorTime(pc.ts_joined, self.peerIdleTimeoutSec)
-                leave_floor = self.floorTime(pc.ts_leave, self.peerIdleTimeoutSec)
-                ts = join_floor.timestamp()
-                leave_timestamp = leave_floor.timestamp()
-                while ts < leave_timestamp:
-                    pcBuckets[datetime.fromtimestamp(ts)].append(pc)
-                    ts += self.peerIdleTimeoutSec
-
-                # join_floor = pd.Timestamp(pc.ts_joined).floor(freq)
-                # leave_floor = pd.Timestamp(pc.ts_leave).floor(freq)
-                # for ts in list(pd.date_range(join_floor, leave_floor, freq=freq)):
-                #     pcBuckets[ts].append(pc)
+                self.addToFlooredBuckets(pc.ts_joined, pc.ts_leave, pcBuckets, pc)
         _logger.info("Finished indexing of active users by time buckets")
 
-        dtIncrements: dict[datetime, float] = defaultdict(lambda: 0)
+        dtIncrements: dict[datetime, RMSDowntimeDT] = defaultdict(lambda: RMSDowntimeDT())
         for rollout in self.rollouts:
             for dt in rollout.downtimes:
                 dt_floor = pd.Timestamp(dt.ts).floor(freq)
                 num_pc = len(pcBuckets[dt_floor])
+                num_rm = len(rmBuckets[dt_floor])
                 dtDelta = float(len(dt.rm.peerConnections)) / float(num_pc)
-                dtIncrements[dt_floor] += dtDelta
+
+                theDt = dtIncrements[dt_floor]
+                theDt.ts = dt_floor
+                theDt.dt += dtDelta
+                theDt.rmInterrupted += num_rm
+                theDt.pcInterrupted += num_pc
 
         _logger.info("Finished calculation of total downtime in integrating model")
-        return RMSDowntimeChart(dtIncrements)
+        return RMSDowntimeChart(unorderedData=dtIncrements)

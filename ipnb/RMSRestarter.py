@@ -185,20 +185,22 @@ class RMSRestarter(ABC):
             f"bug found: node id in maintenance finish index node {nodeId} " \
             f"does't correspond to the actual node ID in the event node {graceFinishEvent.nodeId}"
 
-        newFinishGraceEventIndexIndex: int = 0
+        newFinishGraceEventIndexIndex: int = finishGraceEventIndex
         for i in range(finishGraceEventIndex-1, -1, -1):
             # shift all events that should start after our new maintenance time to +1
+            _logger.debug(f"trying index {i}")
             if self.finishGraceEvents[i].ts > ts:
                 evt = self.finishGraceEvents[i]
                 newIndex = i+1
+                _logger.debug(f"shifting event from {i} to {newIndex} because {formatIsoDate(self.finishGraceEvents[i].ts)} is larger than {formatIsoDate(ts)}")
                 self.finishGraceEvents[newIndex] = evt
                 self.nodesInGraceIndex[evt.nodeId] = newIndex
                 newFinishGraceEventIndexIndex = i
             else:
                 break
 
-        _logger.debug(f"maintenance of node {nodeId} shifted from {formatIsoDate(graceFinishEvent.ts)} "
-              f"to {formatIsoDate(ts)} because there were no meetings")
+        _logger.debug(f"maintenance of node {nodeId} shifted from {finishGraceEventIndex}:{formatIsoDate(graceFinishEvent.ts)} "
+              f"to {newFinishGraceEventIndexIndex}:{formatIsoDate(ts)} because there were no meetings")
         # register the new event in the correct index and with a correct ts
         assert nodeId == graceFinishEvent.nodeId, f"bug found: nodeId {nodeId} does not correspoint to event node id {graceFinishEvent.nodeId}"
         # reinit the event because we can't change lambda
@@ -215,7 +217,8 @@ class RMSRestarter(ABC):
             assert self.finishGraceEvents[newFinishGraceEventIndexIndex-1].ts <= self.finishGraceEvents[newFinishGraceEventIndexIndex].ts
 
         if newFinishGraceEventIndexIndex < len(self.finishGraceEvents)-1:
-            assert self.finishGraceEvents[newFinishGraceEventIndexIndex+1].ts >= self.finishGraceEvents[newFinishGraceEventIndexIndex].ts
+            if self.finishGraceEvents[newFinishGraceEventIndexIndex+1].ts < self.finishGraceEvents[newFinishGraceEventIndexIndex].ts:
+                raise RuntimeError(f"Index: {newFinishGraceEventIndexIndex}. {formatIsoDate(self.finishGraceEvents[newFinishGraceEventIndexIndex+1].ts)} < {formatIsoDate(self.finishGraceEvents[newFinishGraceEventIndexIndex].ts)}")
 
     def returnNodeToDuty(self, nodeId: int, ts: datetime):
         _logger.debug(f"{formatIsoDate(ts)}: returning node {nodeId} to duty")

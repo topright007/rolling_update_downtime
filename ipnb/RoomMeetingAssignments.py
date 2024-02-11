@@ -8,6 +8,7 @@ from RoomMeeting import *
 
 _logger = logging.getLogger("RoomMeetingAssignments")
 
+
 class ShardsConfig(ABC):
     shards: list[int]
 
