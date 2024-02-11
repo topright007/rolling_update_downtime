@@ -12,11 +12,15 @@ _logger = logging.getLogger("dt_calc_models")
 class RMSDowntimeDT(ABC):
     ts: datetime
     dt: float
+    rmTotal: int
     rmInterrupted: int
+    pcTotal: int
     pcInterrupted: int
 
     def __init__(self):
         self.dt = 0
+        self.pcTotal = 0
+        self.rmTotal = 0
         self.rmInterrupted = 0
         self.pcInterrupted = 0
 
@@ -32,6 +36,8 @@ class RMSDowntimeChart(ABC):
     def __init__(self, unorderedData: dict[datetime, RMSDowntimeDT] = None, sourceFname: str = None):
         self.dates = []
         self.dts = []
+        self.pcTotal = []
+        self.rmTotal = []
         self.rmInterrupted = []
         self.pcInterrupted = []
         self.totalDT = 0
@@ -39,6 +45,8 @@ class RMSDowntimeChart(ABC):
             for date, dt in sorted(unorderedData.items()):
                 self.dates.append(date)
                 self.dts.append(dt.dt)
+                self.pcTotal.append(dt.pcTotal)
+                self.rmTotal.append(dt.rmTotal)
                 self.rmInterrupted.append(dt.rmInterrupted)
                 self.pcInterrupted.append(dt.pcInterrupted)
                 self.totalDT += dt.dt
@@ -48,15 +56,25 @@ class RMSDowntimeChart(ABC):
             raise "unorderedData or sourceFname are required"
 
     def serialize(self, fname: str):
-        df = pd.DataFrame(data={'dates': self.dates, 'dts': self.dts})
+        df = pd.DataFrame(data={'dates': self.dates,
+                                'dts': self.dts,
+                                'rmTotal': self.rmTotal,
+                                'rmInterrupted': self.rmInterrupted,
+                                'pcTotal': self.pcTotal,
+                                'pcInterrupted': self.pcInterrupted}
+                          )
         df.to_csv(fname, index=False, sep='\t')
 
     def parse(self, fname: str):
         df = pd.read_csv(fname, header=0,
-                    names=['dates', 'dts'],
+                    names=['dates', 'dts', 'rmTotal', 'rmInterrupted',  'pcTotal',  'pcInterrupted'],
                     delimiter='\t')
         self.dates = list(map(lambda dat: parseIsoDate(dat), df['dates']))
         self.dts = df['dts']
+        self.pcTotal = df['pcTotal']
+        self.rmTotal = df['rmTotal']
+        self.pcInterrupted = df['pcInterrupted']
+        self.rmInterrupted = df['rmInterrupted']
         self.totalDT = sum(self.dts)
 
 
@@ -127,9 +145,11 @@ class IntegratingDTClacModel(DTCalcModel):
 
                 theDt = dtIncrements[dt_floor]
                 theDt.ts = dt_floor
+                theDt.pcTotal = num_pc
+                theDt.rmTotal = num_rm
                 theDt.dt += dtDelta
-                theDt.rmInterrupted += num_rm
-                theDt.pcInterrupted += num_pc
+                theDt.rmInterrupted += 1
+                theDt.pcInterrupted += len(dt.rm.peerConnections)
 
         _logger.info("Finished calculation of total downtime in integrating model")
         return RMSDowntimeChart(unorderedData=dtIncrements)
