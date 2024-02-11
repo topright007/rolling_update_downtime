@@ -47,13 +47,13 @@ class RoundRobinNewNodePolicy(ConstantGracePeriodShardedCluster):
     numNodes: int
     lastSelectedRoundRobinNode: int
 
-    def __init__(self, gracePeriodSec: int, numNodes: int):
-        super().__init__(gracePeriodSec)
-        self.numNodes = numNodes
+    def __init__(self, gracePeriodSec: int, shardsConfig: ShardsConfig):
+        super().__init__(gracePeriodSec, shardsConfig)
         self.lastSelectedRoundRobinNode = -1
 
     def pickNodeForRoom(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
-        return random.randrange(0, 1)
+        self.lastSelectedRoundRobinNode = (self.lastSelectedRoundRobinNode + 1) % self.shardsConfig.numNodesGlobal()
+        return self.lastSelectedRoundRobinNode
 
 
 # check out number of sessions on the nodes and pick the least loaded
