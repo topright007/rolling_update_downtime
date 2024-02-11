@@ -59,8 +59,8 @@ class RoundRobinNewNodePolicy(ConstantGracePeriodShardedCluster):
 # check out number of sessions on the nodes and pick the least loaded
 class LeastLoadedNewNodePolicy(ConstantGracePeriodShardedCluster):
 
-    def __init__(self, gracePeriodSec: int):
-        super().__init__(gracePeriodSec)
+    def __init__(self, gracePeriodSec: int, shardsConfig: ShardsConfig):
+        super().__init__(gracePeriodSec, shardsConfig)
 
     def pickNodeForRoom(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
         return random.randrange(0, 1)
