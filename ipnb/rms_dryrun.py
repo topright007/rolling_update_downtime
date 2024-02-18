@@ -33,7 +33,7 @@ root.info(f"Loaded {len(calls)} events")
 roomMeetings: list[RoomMeeting] = loadRoomMeetings(calls, MEETING_ON_SAME_BRIDGE_IDLE_TIMEOUT)
 
 shardsConfig = ShardsConfig([10, 10, 10])
-restarter = RMSRestarter(roomMeetings, [parseIsoDate('2023-10-02 13:00:00,000')], 3, 120, shardsConfig, RoundRobinNewNodePolicy(GRACE_PERIOD_SEC, shardsConfig))
+restarter = RMSRestarter(roomMeetings, [parseIsoDate('2023-10-02 13:00:00,000')], 3, 120, shardsConfig, LeastLoadedNewNodePolicy(GRACE_PERIOD_SEC, shardsConfig))
 restartResult: list[RMSRollout] = restarter.calculateRestarts()
 chart = IntegratingDTClacModel(restarter.assignments, restartResult, restarter.sortedMeetings, PEER_IDLE_TIMEOUT_SEC).totalDowntime()
 root.info(f"Total downtime is {chart.totalDT}")

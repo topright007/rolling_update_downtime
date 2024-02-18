@@ -67,10 +67,10 @@ class LeastLoadedNewNodePolicy(ConstantGracePeriodShardedCluster):
         #pick at random among the equally loaded nodes
         leastLoadedNodes = []
         leastNumPCOnNode = None
-        for node, numPC in activeNodeToNumPC:
+        for node, numPC in activeNodeToNumPC.items():
             if leastNumPCOnNode is not None and numPC > leastNumPCOnNode:
                 continue
-            if numPC < leastNumPCOnNode:
+            if leastNumPCOnNode is not None and numPC < leastNumPCOnNode:
                 leastLoadedNodes = []
             leastLoadedNodes.append(node)
             leastNumPCOnNode = numPC

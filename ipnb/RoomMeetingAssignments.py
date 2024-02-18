@@ -182,7 +182,13 @@ class RoomMeetingAssignments(ABC):
     def getActiveNodesToPeerConnectionsNum(self, ts: datetime, nodes: Iterable[int]) -> dict[int, int]:
         result = {}
         for node in nodes:
+            if self.isNodeInMaintenance(node, ts):
+                continue
             tsMapping = self.nodeToRoomMeeting[node]
+            if len(tsMapping) == 0:
+                result[node] = 0
+                continue
+
             nodeTs = list(tsMapping)[-1]
             assert nodeTs <= ts, f"trying to operate on node last accessed at {formatIsoDate(nodeTs)} with an earlier date {formatIsoDate(ts)}"
             cnt = 0
