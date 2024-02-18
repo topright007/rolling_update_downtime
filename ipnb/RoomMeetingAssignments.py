@@ -2,6 +2,8 @@ import logging
 from abc import ABC
 from collections import defaultdict
 from datetime import datetime
+from typing import Iterable
+
 from rmsutils import *
 
 from RoomMeeting import *
@@ -27,8 +29,18 @@ class ShardsConfig(ABC):
     def clusterToGlobal(self, clusterNumber: int, indexInCluster: int) -> int:
         pass
 
-    def numNodesGlobal(self):
+    def numNodesGlobal(self) -> int:
         return sum(self.shards)
+
+    def numClusters(self) -> int:
+        return len(self.shards)
+
+    def nodesInCluster(self, cluster: int) -> Iterable[int]:
+        firstNode = 0
+        for c in range(0, cluster):
+            firstNode += self.shards[c]
+        lastNode  = firstNode + self.shards[cluster]
+        return range(firstNode, lastNode)
 
 
 class RoomMeetingAssignments(ABC):
@@ -166,3 +178,19 @@ class RoomMeetingAssignments(ABC):
         nodesInMaintenance = self.getNodesInMaintenance(ts)
         nodesInMaintenance.discard(node)
         self.nodesMaintenance[ts] = nodesInMaintenance
+
+    def getActiveNodesToPeerConnectionsNum(self, ts: datetime, nodes: Iterable[int]) -> dict[int, int]:
+        result = {}
+        for node in nodes:
+            tsMapping = self.nodeToRoomMeeting[node]
+            nodeTs = list(tsMapping)[-1]
+            assert nodeTs <= ts, f"trying to operate on node last accessed at {formatIsoDate(nodeTs)} with an earlier date {formatIsoDate(ts)}"
+            cnt = 0
+            for rmId in tsMapping[nodeTs]:
+                rm = self.roomMeetingById(rmId)
+                for pc in rm.peerConnections:
+                    if pc.ts_joined <= ts and pc.ts_leave >= ts:
+                        cnt += 1
+            result[node] = cnt
+        return result
+

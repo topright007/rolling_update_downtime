@@ -269,7 +269,6 @@ class RMSRestarter(ABC):
             _logger.debug(f"{formatIsoDate(ts)}: reassigning room meeting {meetingId} from node {nodeId} to node {newNodeId}")
 
         self.scheduleNodeStartup(nodeId, ts)
-        #todo: increase dt for those meetings that are still on the node. reassign meetings
 
 
     def startRollout(self, ts: datetime):

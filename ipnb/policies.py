@@ -62,16 +62,36 @@ class LeastLoadedNewNodePolicy(ConstantGracePeriodShardedCluster):
     def __init__(self, gracePeriodSec: int, shardsConfig: ShardsConfig):
         super().__init__(gracePeriodSec, shardsConfig)
 
+    def pickNodeFromListOfNodes(self, ts: datetime, rmass: RoomMeetingAssignments, nodes: Iterable[int]) -> int:
+        activeNodeToNumPC = rmass.getActiveNodesToPeerConnectionsNum(ts, nodes)
+        #pick at random among the equally loaded nodes
+        leastLoadedNodes = []
+        leastNumPCOnNode = None
+        for node, numPC in activeNodeToNumPC:
+            if leastNumPCOnNode is not None and numPC > leastNumPCOnNode:
+                continue
+            if numPC < leastNumPCOnNode:
+                leastLoadedNodes = []
+            leastLoadedNodes.append(node)
+            leastNumPCOnNode = numPC
+
+        assert len(leastLoadedNodes) > 0, "Failed to find any node to pick. Must be a bug"
+        randomLeastLoadedIndex = random.randrange(0, len(leastLoadedNodes))
+        return randomLeastLoadedIndex
+
     def pickNodeForRoom(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
-        return random.randrange(0, 1)
+        return self.pickNodeFromListOfNodes(ts, rmass, range(0, self.shardsConfig.numNodesGlobal()))
 
 
 # pick an island at random and pick the least loaded node on it
-class RandomIslandLeastLoadedNewNodePolicy(ConstantGracePeriodShardedCluster):
+class RandomIslandLeastLoadedNewNodePolicy(LeastLoadedNewNodePolicy):
     lastSelectedRoundRobinNode = -1
 
-    def __init__(self, gracePeriodSec: int):
-        super().__init__(gracePeriodSec)
+    def __init__(self, gracePeriodSec: int, shardsConfig: ShardsConfig):
+        super().__init__(gracePeriodSec, shardsConfig)
 
     def pickNodeForRoom(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
-        return random.randrange(0, 1)
+        clusterToPick = random.randrange(0, self.shardsConfig.numClusters())
+
+        nodesToPickFrom = self.shardsConfig.nodesInCluster(clusterToPick)
+        return self.pickNodeFromListOfNodes(ts, rmass, nodesToPickFrom)
