@@ -1,15 +1,15 @@
 from abc import ABC
-from datetime import datetime
 
 from RMSConnection import RMSConnection
+from rmsutils import formatIsoDate
 
 
 class PeerConnection(ABC):
     room_id: str
     peer_id: str
-    ts_joined: datetime
-    ts_connected: datetime
-    ts_leave: datetime
+    ts_joined: float
+    ts_connected: float
+    ts_leave: float
     rmsConnections: list[RMSConnection]
 
     def __init__(self, rmsConnections: list[RMSConnection]):
@@ -25,4 +25,4 @@ class PeerConnection(ABC):
         for rmsc in self.rmsConnections:
             connectionsStr += f"{rmsc.ts_joined} - {rmsc.ts_leave},"
 
-        return f"room_id: {self.room_id}; peer_id: {self.peer_id}; ts_joined: {self.ts_joined}; ts_connected: {self.ts_connected}; ts_leave: {self.ts_leave}; rmsConnections: {connectionsStr}"
+        return f"room_id: {self.room_id}; peer_id: {self.peer_id}; ts_joined: {formatIsoDate(self.ts_joined)}; ts_connected: {formatIsoDate(self.ts_connected)}; ts_leave: {formatIsoDate(self.ts_leave)}; rmsConnections: {connectionsStr}"

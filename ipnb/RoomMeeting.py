@@ -11,8 +11,8 @@ from rmsutils import *
 #a set of peer connections that were meeting at the same time
 class RoomMeeting(ABC):
     room_id: str
-    ts_start: datetime
-    ts_finish: datetime
+    ts_start: float
+    ts_finish: float
     peerConnections: list[PeerConnection]
     id: str
     meetingOnTheSameBridgeIdleTimeoutSec: int

@@ -9,9 +9,9 @@ class RMSConnection(ABC):
     peer_id: str
     msid: str
     rsid: str
-    ts_joined: datetime
-    ts_connected: datetime
-    ts_leave: datetime
+    ts_joined: float
+    ts_connected: float
+    ts_leave: float
 
     def __str__(self):
         return json.dumps(self, indent=4)
@@ -48,8 +48,8 @@ def splitRMSCByOverlaps(rmsc: list[RMSConnection], meetingOnTheSameBridgeIdleTim
     for conn in conns:
         # print(f"processing room {room_id}: {conn.ts_joined} - {co>=nn.ts_leave}")
         # negative values are OK here
-        same_session: bool = (conn.ts_joined - cur_end).total_seconds() < meetingOnTheSameBridgeIdleTimeoutSec and (
-                    cur_start - conn.ts_leave).total_seconds() < meetingOnTheSameBridgeIdleTimeoutSec
+        same_session: bool = conn.ts_joined - cur_end < meetingOnTheSameBridgeIdleTimeoutSec and \
+                             cur_start - conn.ts_leave < meetingOnTheSameBridgeIdleTimeoutSec
         if (same_session):
             cur_start = min(cur_start, conn.ts_joined)
             cur_end = max(cur_end, conn.ts_leave)

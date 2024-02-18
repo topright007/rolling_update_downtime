@@ -8,10 +8,10 @@ _logger = logging.getLogger("policies")
 
 class NewNodePolicy(ABC):
     @abc.abstractmethod
-    def pickNodeForRoom(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
+    def pickNodeForRoom(self, ts: float, rmass: RoomMeetingAssignments) -> int:
         raise 'not implemented'
 
-    def gracePeriod(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
+    def gracePeriod(self, ts: float, rmass: RoomMeetingAssignments) -> int:
         raise 'not implemented'
 
 
@@ -23,7 +23,7 @@ class ConstantGracePeriodShardedCluster(NewNodePolicy):
         self.gracePeriodSec = gracePeriodSec
         self.shardsConfig = shardsConfig
 
-    def gracePeriod(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
+    def gracePeriod(self, ts: float, rmass: RoomMeetingAssignments) -> int:
         return self.gracePeriodSec
 
 
@@ -32,7 +32,7 @@ class RandomNewNodePolicy(ConstantGracePeriodShardedCluster):
     def __init__(self, gracePeriodSec: int, shardsConfig: ShardsConfig):
         super().__init__(gracePeriodSec, shardsConfig)
 
-    def pickNodeForRoom(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
+    def pickNodeForRoom(self, ts: float, rmass: RoomMeetingAssignments) -> int:
         nodesInMaintenance = sorted(list(rmass.getNodesInMaintenance(ts)))
         idxToPick = random.randrange(0, self.shardsConfig.numNodesGlobal() - len(nodesInMaintenance))
         for inMaintenance in nodesInMaintenance:
@@ -51,7 +51,7 @@ class RoundRobinNewNodePolicy(ConstantGracePeriodShardedCluster):
         super().__init__(gracePeriodSec, shardsConfig)
         self.lastSelectedRoundRobinNode = -1
 
-    def pickNodeForRoom(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
+    def pickNodeForRoom(self, ts: float, rmass: RoomMeetingAssignments) -> int:
         self.lastSelectedRoundRobinNode = (self.lastSelectedRoundRobinNode + 1) % self.shardsConfig.numNodesGlobal()
         return self.lastSelectedRoundRobinNode
 
@@ -62,7 +62,7 @@ class LeastLoadedNewNodePolicy(ConstantGracePeriodShardedCluster):
     def __init__(self, gracePeriodSec: int, shardsConfig: ShardsConfig):
         super().__init__(gracePeriodSec, shardsConfig)
 
-    def pickNodeFromListOfNodes(self, ts: datetime, rmass: RoomMeetingAssignments, nodes: Iterable[int]) -> int:
+    def pickNodeFromListOfNodes(self, ts: float, rmass: RoomMeetingAssignments, nodes: Iterable[int]) -> int:
         activeNodeToNumPC = rmass.getActiveNodesToPeerConnectionsNum(ts, nodes)
         #pick at random among the equally loaded nodes
         leastLoadedNodes = []
@@ -79,7 +79,7 @@ class LeastLoadedNewNodePolicy(ConstantGracePeriodShardedCluster):
         randomLeastLoadedIndex = random.randrange(0, len(leastLoadedNodes))
         return randomLeastLoadedIndex
 
-    def pickNodeForRoom(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
+    def pickNodeForRoom(self, ts: float, rmass: RoomMeetingAssignments) -> int:
         return self.pickNodeFromListOfNodes(ts, rmass, range(0, self.shardsConfig.numNodesGlobal()))
 
 
@@ -90,7 +90,7 @@ class RandomIslandLeastLoadedNewNodePolicy(LeastLoadedNewNodePolicy):
     def __init__(self, gracePeriodSec: int, shardsConfig: ShardsConfig):
         super().__init__(gracePeriodSec, shardsConfig)
 
-    def pickNodeForRoom(self, ts: datetime, rmass: RoomMeetingAssignments) -> int:
+    def pickNodeForRoom(self, ts: float, rmass: RoomMeetingAssignments) -> int:
         clusterToPick = random.randrange(0, self.shardsConfig.numClusters())
 
         nodesToPickFrom = self.shardsConfig.nodesInCluster(clusterToPick)

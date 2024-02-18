@@ -1,7 +1,6 @@
 import logging
 from abc import ABC
 from collections import defaultdict
-from datetime import datetime
 from typing import Iterable
 
 from rmsutils import *
@@ -44,15 +43,15 @@ class ShardsConfig(ABC):
 
 
 class RoomMeetingAssignments(ABC):
-    nodeToRoomMeeting: dict[int, dict[datetime, list[str]]]
-    roomMeetingToNode: dict[str, dict[datetime, int]]
+    nodeToRoomMeeting: dict[int, dict[float, list[str]]]
+    roomMeetingToNode: dict[str, dict[float, int]]
 
-    lastNodeDates: dict[int, datetime]
-    lastRMDates: dict[str, datetime]
+    lastNodeDates: dict[int, float]
+    lastRMDates: dict[str, float]
 
     roomMeetingDict: dict[str, RoomMeeting]
 
-    nodesMaintenance: dict[datetime, set[int]]
+    nodesMaintenance: dict[float, set[int]]
 
     def __init__(self):
         self.nodeToRoomMeeting = defaultdict(lambda: defaultdict(list))
@@ -91,17 +90,17 @@ class RoomMeetingAssignments(ABC):
     def roomMeetingById(self, id: str):
         return self.roomMeetingDict[id]
 
-    def getCurrentNode(self, rm: RoomMeeting, ts: datetime) -> int:
+    def getCurrentNode(self, rm: RoomMeeting, ts: float) -> int:
         if rm.id in self.lastRMDates:
             lastRMDate = self.lastRMDates[rm.id]
             assert lastRMDate <= ts, f"Room Meeting was last accessed at {formatIsoDate(lastRMDate)}. Can not access it at {ts}"
             return self.roomMeetingToNode[rm.id][lastRMDate]
         return -1
 
-    def nodeHasMeetings(self, nodeId: int, ts: datetime) -> bool:
+    def nodeHasMeetings(self, nodeId: int, ts: float) -> bool:
         return len(self.getNodeMeetings(nodeId, ts)) > 0
 
-    def getNodeMeetings(self, nodeId: int, ts: datetime) -> list[str]:
+    def getNodeMeetings(self, nodeId: int, ts: float) -> list[str]:
         mappings = self.nodeToRoomMeeting[nodeId]
         if len(mappings) == 0:
             return []
@@ -110,7 +109,7 @@ class RoomMeetingAssignments(ABC):
         _logger.debug(f"mapping: {formatIsoDate(lastMappedTs)}: meetings on node {nodeId}: {mappings[lastMappedTs]}")
         return mappings[lastMappedTs]
 
-    def assignRoomMeeting(self, rm: RoomMeeting, node: int, ts: datetime):
+    def assignRoomMeeting(self, rm: RoomMeeting, node: int, ts: float):
         curNode: int = self.getCurrentNode(rm, ts)
         if curNode == node:
             return
@@ -133,7 +132,7 @@ class RoomMeetingAssignments(ABC):
         self.lastNodeDates[node] = ts
         self.lastRMDates[rm.id] = ts
 
-    def releaseRoomMeeting(self, rm: RoomMeeting, ts: datetime):
+    def releaseRoomMeeting(self, rm: RoomMeeting, ts: float):
         if rm.id in self.lastRMDates:
             lastNodeAssignmentTs = self.lastRMDates[rm.id]
             assert lastNodeAssignmentTs <= ts, f"can not assign ts {ts}. TS {lastNodeAssignmentTs} is already assigned to room {rm.id}"
@@ -159,27 +158,27 @@ class RoomMeetingAssignments(ABC):
                     self.lastNodeDates[prevNodeIdx] = ts
                     self.lastRMDates[rm.id] = ts
 
-    def getNodesInMaintenance(self, ts: datetime) -> set[int]:
+    def getNodesInMaintenance(self, ts: float) -> set[int]:
         if len(self.nodesMaintenance.keys()) > 0:
             lastMaintenanceTs = list(self.nodesMaintenance)[-1]
             assert lastMaintenanceTs <= ts, f"Can not modify maintenance. Last maintenance TS ${lastMaintenanceTs} is newer than ${ts}"
             return self.nodesMaintenance[lastMaintenanceTs].copy()
         return set()
 
-    def isNodeInMaintenance(self, nodeId: int, ts: datetime):
+    def isNodeInMaintenance(self, nodeId: int, ts: float):
         return nodeId in self.getNodesInMaintenance(ts)
 
-    def startNodeMaintenance(self, node: int, ts: datetime):
+    def startNodeMaintenance(self, node: int, ts: float):
         nodesInMaintenance = self.getNodesInMaintenance(ts)
         nodesInMaintenance.add(node)
         self.nodesMaintenance[ts] = nodesInMaintenance
 
-    def endNodeMaintenance(self, node: int, ts: datetime):
+    def endNodeMaintenance(self, node: int, ts: float):
         nodesInMaintenance = self.getNodesInMaintenance(ts)
         nodesInMaintenance.discard(node)
         self.nodesMaintenance[ts] = nodesInMaintenance
 
-    def getActiveNodesToPeerConnectionsNum(self, ts: datetime, nodes: Iterable[int]) -> dict[int, int]:
+    def getActiveNodesToPeerConnectionsNum(self, ts: float, nodes: Iterable[int]) -> dict[int, int]:
         result = {}
         for node in nodes:
             if self.isNodeInMaintenance(node, ts):

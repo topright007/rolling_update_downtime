@@ -10,7 +10,7 @@ _logger = logging.getLogger("dt_calc_models")
 
 @dataclass
 class RMSDowntimeDT(ABC):
-    ts: datetime
+    ts: float
     dt: float
     rmTotal: int
     rmInterrupted: int
@@ -27,14 +27,16 @@ class RMSDowntimeDT(ABC):
 
 @dataclass
 class RMSDowntimeChart(ABC):
-    dates: list[datetime]
+    dates: list[float]
+    datetimes: list[datetime]
     rmInterrupted: list[int]
     pcInterrupted: list[int]
     dts: list[float]
     totalDT: float
 
-    def __init__(self, unorderedData: dict[datetime, RMSDowntimeDT] = None, sourceFname: str = None):
+    def __init__(self, unorderedData: dict[float, RMSDowntimeDT] = None, sourceFname: str = None):
         self.dates = []
+        self.datetimes = []
         self.dts = []
         self.pcTotal = []
         self.rmTotal = []
@@ -44,6 +46,7 @@ class RMSDowntimeChart(ABC):
         if unorderedData is not None:
             for date, dt in sorted(unorderedData.items()):
                 self.dates.append(date)
+                self.datetimes.append(datetime.fromtimestamp(date))
                 self.dts.append(dt.dt)
                 self.pcTotal.append(dt.pcTotal)
                 self.rmTotal.append(dt.rmTotal)
@@ -69,7 +72,8 @@ class RMSDowntimeChart(ABC):
         df = pd.read_csv(fname, header=0,
                     names=['dates', 'dts', 'rmTotal', 'rmInterrupted',  'pcTotal',  'pcInterrupted'],
                     delimiter='\t')
-        self.dates = list(map(lambda dat: parseIsoDate(dat), df['dates']))
+        self.dates = list(map(lambda dat: float(dat), df['dates']))
+        self.datetimes = list(map(lambda dat: datetime.fromtimestamp(dat), self.dates))
         self.dts = df['dts']
         self.pcTotal = df['pcTotal']
         self.rmTotal = df['rmTotal']
@@ -106,27 +110,24 @@ class IntegratingDTClacModel(DTCalcModel):
         super().__init__(assignments, rollouts, sortedMeetings)
         self.peerIdleTimeoutSec = peerIdleTimeoutSec
 
-    def floorTime(self, toFloor: datetime, freqSec: int):
-        epochSeconds = int(toFloor.timestamp())
+    def floorTime(self, toFloor: float, freqSec: int) -> float:
+        epochSeconds = int(toFloor)
         epochSeconds = int(epochSeconds / freqSec) * freqSec
-        return datetime.fromtimestamp(epochSeconds)
+        return float(epochSeconds)
 
-
-    def addToFlooredBuckets(self, begin: datetime, end: datetime, buckets: dict[datetime, any], toAdd: any):
-        rm_start_floor = self.floorTime(begin, self.peerIdleTimeoutSec)
-        rm_finish_floor = self.floorTime(end, self.peerIdleTimeoutSec)
-        ts = rm_start_floor.timestamp()
-        leave_timestamp_sec = rm_finish_floor.timestamp()
+    def addToFlooredBuckets(self, beginTs: float, endTs: float, buckets: dict[float, any], toAdd: any):
+        rm_start_floor = self.floorTime(beginTs, self.peerIdleTimeoutSec)
+        rm_finish_floor = self.floorTime(endTs, self.peerIdleTimeoutSec)
+        ts = rm_start_floor
+        leave_timestamp_sec = rm_finish_floor
         while ts < leave_timestamp_sec:
-            buckets[datetime.fromtimestamp(ts)].append(toAdd)
+            buckets[ts].append(toAdd)
             ts += self.peerIdleTimeoutSec
-
 
     def totalDowntime(self) -> RMSDowntimeChart:
         _logger.info("Starting calculation of total downtime via integrating model")
-        freq = f'{self.peerIdleTimeoutSec}s'
-        pcBuckets: dict[datetime, list[PeerConnection]] = defaultdict(list)
-        rmBuckets: dict[datetime, list[RoomMeeting]] = defaultdict(list)
+        pcBuckets: dict[float, list[PeerConnection]] = defaultdict(list)
+        rmBuckets: dict[float, list[RoomMeeting]] = defaultdict(list)
 
         # index
         for rm in self.sortedMeetings.meetingByStartTs:
@@ -135,10 +136,10 @@ class IntegratingDTClacModel(DTCalcModel):
                 self.addToFlooredBuckets(pc.ts_joined, pc.ts_leave, pcBuckets, pc)
         _logger.info("Finished indexing of active users by time buckets")
 
-        dtIncrements: dict[datetime, RMSDowntimeDT] = defaultdict(lambda: RMSDowntimeDT())
+        dtIncrements: dict[float, RMSDowntimeDT] = defaultdict(lambda: RMSDowntimeDT())
         for rollout in self.rollouts:
             for dt in rollout.downtimes:
-                dt_floor = pd.Timestamp(dt.ts).floor(freq)
+                dt_floor = self.floorTime(dt.ts, self.peerIdleTimeoutSec)
                 num_pc = len(pcBuckets[dt_floor])
                 num_rm = len(rmBuckets[dt_floor])
                 dtDelta = float(len(dt.rm.peerConnections)) / float(num_pc)

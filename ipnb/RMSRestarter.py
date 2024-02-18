@@ -13,32 +13,32 @@ _logger = logging.getLogger("RMSRestarter")
 
 @dataclass
 class NodeMaintenanceRecord:
-    ts: datetime
+    ts: float
     node: int
 
 
 @dataclass
 class RMSRolloutMeetingDowntime(ABC):
-    ts: datetime
+    ts: float
     rm: RoomMeeting
 
 
 class RMSRollout(ABC):
-    startTs: datetime
-    #datetime - meeting_id -> num_participants
+    startTs: float
+    #ts - meeting_id -> num_participants
     downtimes: list[RMSRolloutMeetingDowntime]
 
-    def __init__(self, startTs: datetime):
+    def __init__(self, startTs: float):
         self.downtimes = []
         self.startTs = startTs
 
-    def downtime(self, ts: datetime, rm: RoomMeeting):
+    def downtime(self, ts: float, rm: RoomMeeting):
         self.downtimes.append(RMSRolloutMeetingDowntime(ts, rm))
 
 
 @dataclass
 class RMSRestarterEvent:
-    ts: datetime
+    ts: float
     action: Callable[[], None]
 
 
@@ -46,7 +46,7 @@ class RMSFinishGraceEvent (RMSRestarterEvent):
     nodeId: int
     rollout: RMSRollout
 
-    def __init__(self, ts: datetime, action: Callable[[], None], nodeId: int, rollout: RMSRollout):
+    def __init__(self, ts: float, action: Callable[[], None], nodeId: int, rollout: RMSRollout):
         super().__init__(ts, action)
         self.nodeId = nodeId
         self.rollout = rollout
@@ -55,7 +55,7 @@ class RMSFinishGraceEvent (RMSRestarterEvent):
 class MultiListTimestampTraverser:
     restartEventLists: list[list[RMSRestarterEvent]]
     restartEventListIndexes: list[int]
-    lastReportedRealTs: datetime
+    lastReportedRealTs: datetime | None
 
     def __init__(self, restartEventLists: list[list[RMSRestarterEvent]]):
         self.restartEventLists = restartEventLists
@@ -70,9 +70,10 @@ class MultiListTimestampTraverser:
 
     def traverse(self):
         _logger.info(f"Started traversal of events")
+        eventsCnt = 0
         while not self.lastTsReached():
-            minTs: datetime = None
-            minIndex: int = None
+            minTs: float | None = None
+            minIndex: int | None = None
             for i in range(0, len(self.restartEventLists)):
                 # no more events of this type for now
                 currentList = self.restartEventLists[i]
@@ -89,9 +90,10 @@ class MultiListTimestampTraverser:
             if minIndex is not None:
                 if self.lastReportedRealTs is None or (datetime.now() - self.lastReportedRealTs).total_seconds() > 5:
                     self.lastReportedRealTs = datetime.now()
-                    _logger.info(f"Processing event at {formatIsoDate(self.restartEventLists[minIndex][self.restartEventListIndexes[minIndex]].ts)}")
+                    _logger.info(f"Processing event {eventsCnt} at {formatIsoDate(self.restartEventLists[minIndex][self.restartEventListIndexes[minIndex]].ts)}")
                 self.restartEventLists[minIndex][self.restartEventListIndexes[minIndex]].action()
                 self.restartEventListIndexes[minIndex] += 1
+                eventsCnt += 1
         _logger.info(f"Finished traversal of events")
 
 
@@ -112,7 +114,7 @@ class RMSRestarter(ABC):
 
     # when downtimes are planned to start (i.e. new version is being rolled out)
     # each new downtime will cancel previous rollout
-    startRolloutAt: list[datetime]
+    startRolloutAt: list[float]
     disruptionBudget: int
     nodeRestartsInSec: int
     shardsConfig: ShardsConfig
@@ -131,7 +133,7 @@ class RMSRestarter(ABC):
 
     rollouts: list[RMSRollout]
 
-    def __init__(self, meetings: list[RoomMeeting], startRolloutAt: list[datetime], disruptionBudget: int, nodeRestartsInSec: int,
+    def __init__(self, meetings: list[RoomMeeting], startRolloutAt: list[float], disruptionBudget: int, nodeRestartsInSec: int,
                  shardsConfig: ShardsConfig, policy: NewNodePolicy):
         self.meetings = meetings
         self.startRolloutAt = startRolloutAt
@@ -158,7 +160,7 @@ class RMSRestarter(ABC):
         _logger.debug(f"{formatIsoDate(rm.ts_finish)}: meeting finished {rm.id} on node {currentNode}")
         self.tryFinishMaintenanceIfNoMoreMeetings(currentNode, rm.ts_finish)
 
-    def scheduleFinishGrace(self, nodeId: int, graceFinishesTs: datetime, rollout: RMSRollout):
+    def scheduleFinishGrace(self, nodeId: int, graceFinishesTs: float, rollout: RMSRollout):
         self.finishGraceEvents.append(RMSFinishGraceEvent(
             graceFinishesTs,
             lambda: self.nodeGraceFinished(nodeId, graceFinishesTs, rollout),
@@ -170,7 +172,7 @@ class RMSRestarter(ABC):
     # check if there are no more meetings on the node and schedule restart now if applicable
     # this method will sink the event to the current ts in the list of fininsh grace events.
     # It will be picked up by the next loop
-    def tryFinishMaintenanceIfNoMoreMeetings(self, nodeId: int, ts: datetime):
+    def tryFinishMaintenanceIfNoMoreMeetings(self, nodeId: int, ts: float):
         # node was not in grace
         if not self.assignments.isNodeInMaintenance(nodeId, ts):
             return
@@ -220,7 +222,7 @@ class RMSRestarter(ABC):
             if self.finishGraceEvents[newFinishGraceEventIndexIndex+1].ts < self.finishGraceEvents[newFinishGraceEventIndexIndex].ts:
                 raise RuntimeError(f"Index: {newFinishGraceEventIndexIndex}. {formatIsoDate(self.finishGraceEvents[newFinishGraceEventIndexIndex+1].ts)} < {formatIsoDate(self.finishGraceEvents[newFinishGraceEventIndexIndex].ts)}")
 
-    def returnNodeToDuty(self, nodeId: int, ts: datetime):
+    def returnNodeToDuty(self, nodeId: int, ts: float):
         _logger.debug(f"{formatIsoDate(ts)}: returning node {nodeId} to duty")
 
         self.assignments.endNodeMaintenance(nodeId, ts)
@@ -229,20 +231,19 @@ class RMSRestarter(ABC):
 
         self.disruptNodes(ts)
 
-    def scheduleNodeStartup(self, nodeId: int, startupStarts: datetime):
+    def scheduleNodeStartup(self, nodeId: int, startupStarts: float):
         _logger.debug(f"{formatIsoDate(startupStarts)}: started startup of node {nodeId}")
-        startupFinishes = startupStarts + timedelta(seconds=self.nodeRestartsInSec)
+        startupFinishes = startupStarts + self.nodeRestartsInSec
         self.nodesStartupEvents.append(
             RMSRestarterEvent(startupFinishes, lambda: self.returnNodeToDuty(nodeId, startupFinishes))
         )
 
-
-    def nodeGraceStarted(self, nodeId: int, ts: datetime):
-        gracePeriod: timedelta
+    def nodeGraceStarted(self, nodeId: int, ts: float):
+        gracePeriod: float
 
         if self.assignments.nodeHasMeetings(nodeId, ts):
             # if node has active meetings, it needs to wait for grace period, and then it will restart
-            gracePeriod = timedelta(seconds=float(self.newNodePolicy.gracePeriod(ts, self.assignments)))
+            gracePeriod = float(self.newNodePolicy.gracePeriod(ts, self.assignments))
             downtimeFinishes = ts + gracePeriod
             self.scheduleFinishGrace(nodeId, downtimeFinishes, self.rollouts[-1])
             _logger.debug(f"{formatIsoDate(ts)}: started grace period of node {nodeId}")
@@ -252,13 +253,13 @@ class RMSRestarter(ABC):
 
         self.assignments.startNodeMaintenance(nodeId, ts)
 
-    def disruptNodes(self, ts: datetime):
+    def disruptNodes(self, ts: float):
         while len(self.assignments.getNodesInMaintenance(ts)) < self.disruptionBudget and \
                 self.nextNodeToRollout < self.shardsConfig.numNodesGlobal():
             self.nodeGraceStarted(self.nextNodeToRollout, ts)
             self.nextNodeToRollout += 1
 
-    def nodeGraceFinished(self, nodeId: int, ts: datetime, rollout: RMSRollout):
+    def nodeGraceFinished(self, nodeId: int, ts: float, rollout: RMSRollout):
         meetingsLeft = self.assignments.getNodeMeetings(nodeId, ts)
         _logger.debug(f"{formatIsoDate(ts)}: finished grace period of node {nodeId}. active meetings: {meetingsLeft}")
         for meetingId in meetingsLeft:
@@ -270,10 +271,9 @@ class RMSRestarter(ABC):
 
         self.scheduleNodeStartup(nodeId, ts)
 
-
-    def startRollout(self, ts: datetime):
-        #todo start multiple rollouts. register new downtime report for each
-        #todo downtime reports should account for all graces started during the downtime. Even if grace finishes during another downtime
+    def startRollout(self, ts: float):
+        # todo start multiple rollouts. register new downtime report for each
+        # todo downtime reports should account for all graces started during the downtime. Even if grace finishes during another downtime
         _logger.debug(f"{formatIsoDate(ts)}: starting rollout. ")
         self.rollouts.append(RMSRollout(startTs=ts))
 

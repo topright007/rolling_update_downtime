@@ -114,11 +114,6 @@ def run_tests(meetingOnTheSameBridgeIdleTimeout) :
     db.assignRoomMeeting(rm4, 0, rm4.ts_start)
     db.releaseRoomMeeting(rm4, rm4.ts_finish)
 
-    # print(str(db))
-
-    #    nodeToRoomMeeting: dict[int, dict[datetime, list[RoomMeeting]]] = defaultdict(lambda :defaultdict(list))
-    #    roomMeetingToNode: dict[str, dict[datetime, int]] = defaultdict(lambda: defaultdict(int))
-
     assert db.nodeToRoomMeeting == {
         0: {
             rm1.ts_start: [rm1.id],
@@ -143,7 +138,7 @@ def checkAndInc(desired: int):
     checker += 1
 
 
-def checkAndIncAndScheduleCheck(desired: int, tsToSchedule: datetime, valToCheck: int):
+def checkAndIncAndScheduleCheck(desired: int, tsToSchedule: float, valToCheck: int):
     global checker
     assert desired == checker, f"desired checker {desired} is not equal to actual {checker}"
     checker += 1
