@@ -21,13 +21,19 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 handler.setFormatter(formatter)
 root.addHandler(handler)
 
-MAX_NUM_ROWS_FOR_DRYRUN = 500000
+MAX_NUM_ROWS_FOR_DRYRUN = 50000
 # MAX_NUM_ROWS_FOR_DRYRUN = 5000000000000
 
 MEETING_ON_SAME_BRIDGE_IDLE_TIMEOUT = 60
 ROLLOUT_DT_DURATION = 15
 PEER_IDLE_TIMEOUT_SEC = 60
 GRACE_PERIOD_SEC = 4*30*60
+
+#to reproduce bugs
+seed = random.randrange(0,10000000)
+random.seed(seed)
+root.info(f"Using random seed {seed}")
+
 calls = pd.read_csv('calls_data_week.tsv', header=0, names=['msid','peer_id', 'room_id', 'rsid', 'ts_connected', 'ts_joined', 'ts_leave', 'ts_offer'], delimiter='\t', nrows=MAX_NUM_ROWS_FOR_DRYRUN)
 root.info(f"Loaded {len(calls)} events")
 roomMeetings: list[RoomMeeting] = loadRoomMeetings(calls, MEETING_ON_SAME_BRIDGE_IDLE_TIMEOUT)

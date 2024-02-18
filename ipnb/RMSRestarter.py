@@ -262,12 +262,11 @@ class RMSRestarter(ABC):
     def nodeGraceFinished(self, nodeId: int, ts: float, rollout: RMSRollout):
         meetingsLeft = self.assignments.getNodeMeetings(nodeId, ts)
         _logger.debug(f"{formatIsoDate(ts)}: finished grace period of node {nodeId}. active meetings: {meetingsLeft}")
-        for meetingId in meetingsLeft:
-            rm = self.assignments.roomMeetingById(meetingId)
+        for rm in meetingsLeft:
             newNodeId = self.newNodePolicy.pickNodeForRoom(ts, self.assignments)
             self.assignments.assignRoomMeeting(rm, newNodeId, ts)
             rollout.downtime(ts, rm)
-            _logger.debug(f"{formatIsoDate(ts)}: reassigning room meeting {meetingId} from node {nodeId} to node {newNodeId}")
+            _logger.debug(f"{formatIsoDate(ts)}: reassigning room meeting {rm.id} from node {nodeId} to node {newNodeId}")
 
         self.scheduleNodeStartup(nodeId, ts)
 

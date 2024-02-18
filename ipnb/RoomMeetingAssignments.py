@@ -43,7 +43,7 @@ class ShardsConfig(ABC):
 
 
 class RoomMeetingAssignments(ABC):
-    nodeToRoomMeeting: dict[int, dict[float, list[str]]]
+    nodeToRoomMeeting: dict[int, dict[float, list[RoomMeeting]]]
     roomMeetingToNode: dict[str, dict[float, int]]
 
     lastNodeDates: dict[int, float]
@@ -64,22 +64,20 @@ class RoomMeetingAssignments(ABC):
     def __str__(self):
         nodeToRoomMeetingResult = defaultdict(lambda: defaultdict(list))
         for node, tsToMeetings in self.nodeToRoomMeeting.items():
-            nodeToRoomMeetingResult[node] = {}
-            for ts, rmids in tsToMeetings.items():
+            for ts, rms in tsToMeetings.items():
                 nodeToRoomMeetingResult[node][formatIsoDate(ts)] = []
-                for rmid in rmids:
-                    nodeToRoomMeetingResult[node][formatIsoDate(ts)].append(rmid)
+                for rm in rms:
+                    nodeToRoomMeetingResult[node][formatIsoDate(ts)].append(rm.id)
         roomMeetingToNodeResult = defaultdict(lambda: defaultdict(int))
         for rmId, tsToNode in self.roomMeetingToNode.items():
-            roomMeetingToNodeResult[rmId] = {}
             for ts, node in tsToNode.items():
                 roomMeetingToNodeResult[rmId][formatIsoDate(ts)] = node
         lastNodeDatesResult = {}
         for node, ts in self.lastNodeDates.items():
             lastNodeDatesResult[node] = formatIsoDate(ts)
         lastRMDatesResult = {}
-        for rmid, ts in self.lastRMDates.items():
-            lastRMDatesResult[rmid] = formatIsoDate(ts)
+        for rm, ts in self.lastRMDates.items():
+            lastRMDatesResult[rm] = formatIsoDate(ts)
         return json.dumps({
             "nodeToRoomMeeting": nodeToRoomMeetingResult,
             "roomMeetingToNode": roomMeetingToNodeResult,
@@ -100,7 +98,7 @@ class RoomMeetingAssignments(ABC):
     def nodeHasMeetings(self, nodeId: int, ts: float) -> bool:
         return len(self.getNodeMeetings(nodeId, ts)) > 0
 
-    def getNodeMeetings(self, nodeId: int, ts: float) -> list[str]:
+    def getNodeMeetings(self, nodeId: int, ts: float) -> list[RoomMeeting]:
         mappings = self.nodeToRoomMeeting[nodeId]
         if len(mappings) == 0:
             return []
@@ -117,16 +115,15 @@ class RoomMeetingAssignments(ABC):
         self.releaseRoomMeeting(rm, ts)
 
         self.roomMeetingDict[rm.id] = rm
-        rmDates = self.nodeToRoomMeeting[node].keys()
         if node in self.lastNodeDates:
             lastTs = self.lastNodeDates[node]
             assert lastTs <= ts, f"can not assign ts {ts}. TS {lastTs} is already assigned to node {node}"
             newNodeRoomMeetingsBeforeAssignment = self.nodeToRoomMeeting[node][lastTs]
             newNodeRoomMeetingsAfterAssignment = newNodeRoomMeetingsBeforeAssignment.copy()
-            newNodeRoomMeetingsAfterAssignment.append(rm.id)
+            newNodeRoomMeetingsAfterAssignment.append(rm)
             self.nodeToRoomMeeting[node][ts] = newNodeRoomMeetingsAfterAssignment
         else:
-            self.nodeToRoomMeeting[node][ts].append(rm.id)
+            self.nodeToRoomMeeting[node][ts].append(rm)
 
         self.roomMeetingToNode[rm.id][ts] = node
         self.lastNodeDates[node] = ts
@@ -145,9 +142,9 @@ class RoomMeetingAssignments(ABC):
 
                 prevNodeLastStateRMs = self.nodeToRoomMeeting[prevNodeIdx][prevNodeLastStateTs]
 
-                prevNodeNewStateRMs = prevNodeLastStateRMs.copy()
+                prevNodeNewStateRMs: list[RoomMeeting] = prevNodeLastStateRMs.copy()
                 try:
-                    prevNodeNewStateRMs.remove(rm.id)
+                    prevNodeNewStateRMs = list(filter(lambda x: x.id != rm.id, prevNodeNewStateRMs))
                 except ValueError:
                     raise Exception(
                         f'Failed to remove {rm.id} by node {prevNodeIdx} ts {formatIsoDate(prevNodeLastStateTs)} and contents {prevNodeNewStateRMs}. It probably have not been assigned to the node')
@@ -191,8 +188,7 @@ class RoomMeetingAssignments(ABC):
             nodeTs = self.lastNodeDates[node]
             assert nodeTs <= ts, f"trying to operate on node last accessed at {formatIsoDate(nodeTs)} with an earlier date {formatIsoDate(ts)}"
             cnt = 0
-            for rmId in tsMapping[nodeTs]:
-                rm = self.roomMeetingById(rmId)
+            for rm in tsMapping[nodeTs]:
                 for pc in rm.peerConnections:
                     if pc.ts_joined <= ts <= pc.ts_leave:
                         cnt += 1
