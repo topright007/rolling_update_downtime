@@ -21,8 +21,8 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 handler.setFormatter(formatter)
 root.addHandler(handler)
 
-# MAX_NUM_ROWS_FOR_DRYRUN = 50000
-MAX_NUM_ROWS_FOR_DRYRUN = 5000000000000
+MAX_NUM_ROWS_FOR_DRYRUN = 500000
+# MAX_NUM_ROWS_FOR_DRYRUN = 5000000000000
 
 MEETING_ON_SAME_BRIDGE_IDLE_TIMEOUT = 60
 ROLLOUT_DT_DURATION = 15

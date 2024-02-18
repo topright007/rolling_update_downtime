@@ -185,17 +185,17 @@ class RoomMeetingAssignments(ABC):
             if self.isNodeInMaintenance(node, ts):
                 continue
             tsMapping = self.nodeToRoomMeeting[node]
-            if len(tsMapping) == 0:
+            if node not in self.lastNodeDates:
                 result[node] = 0
                 continue
 
-            nodeTs = list(tsMapping)[-1]
+            nodeTs = self.lastNodeDates[node]
             assert nodeTs <= ts, f"trying to operate on node last accessed at {formatIsoDate(nodeTs)} with an earlier date {formatIsoDate(ts)}"
             cnt = 0
             for rmId in tsMapping[nodeTs]:
                 rm = self.roomMeetingById(rmId)
                 for pc in rm.peerConnections:
-                    if pc.ts_joined <= ts and pc.ts_leave >= ts:
+                    if pc.ts_joined <= ts <= pc.ts_leave:
                         cnt += 1
             result[node] = cnt
         return result
