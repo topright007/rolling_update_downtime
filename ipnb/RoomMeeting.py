@@ -31,7 +31,7 @@ class RoomMeeting(ABC):
         for peer_id, conns in rmsByPeer.items():
             connsBuckets = splitRMSCByOverlaps(conns, meetingOnTheSameBridgeIdleTimeoutSec)
             for bucket in connsBuckets:
-                self.peerConnections.append(PeerConnection(bucket))
+                self.peerConnections.append(PeerConnection(bucket, self.id))
 
     def __str__(self):
         return json.dumps(self, indent=4)

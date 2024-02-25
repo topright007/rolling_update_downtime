@@ -89,10 +89,13 @@ class RoomMeetingAssignments(ABC):
         return self.roomMeetingDict[id]
 
     def getCurrentNode(self, rm: RoomMeeting, ts: float) -> int:
-        if rm.id in self.lastRMDates:
-            lastRMDate = self.lastRMDates[rm.id]
+        return self.getCurrentNodeByRmId(rm.id, ts)
+
+    def getCurrentNodeByRmId(self, rmId: str, ts: float) -> int:
+        if rmId in self.lastRMDates:
+            lastRMDate = self.lastRMDates[rmId]
             assert lastRMDate <= ts, f"Room Meeting was last accessed at {formatIsoDate(lastRMDate)}. Can not access it at {ts}"
-            return self.roomMeetingToNode[rm.id][lastRMDate]
+            return self.roomMeetingToNode[rmId][lastRMDate]
         return -1
 
     def nodeHasMeetings(self, nodeId: int, ts: float) -> bool:

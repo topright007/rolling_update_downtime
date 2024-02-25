@@ -100,6 +100,8 @@ class MultiListTimestampTraverser:
 class RMSSortedMeetings(ABC):
     meetingByStartTs: list[RoomMeeting]
     meetingByFinishTs: list[RoomMeeting]
+    pcByConnectTs: list[PeerConnection]
+    pcByLeaveTs: list[PeerConnection]
 
     def __init__(self, roomMeetings: list[RoomMeeting]):
         self.meetingByStartTs = roomMeetings.copy()
@@ -107,6 +109,14 @@ class RMSSortedMeetings(ABC):
 
         self.meetingByFinishTs = roomMeetings.copy()
         self.meetingByFinishTs.sort(key=lambda k: k.ts_finish)
+
+        self.pcByConnectTs: list[PeerConnection] = []
+        for m in roomMeetings:
+            self.pcByConnectTs.extend(m.peerConnections)
+        self.pcByLeaveTs: list[PeerConnection] = self.pcByConnectTs.copy()
+
+        self.pcByConnectTs.sort(key=lambda k: k.ts_joined)
+        self.pcByLeaveTs.sort(key=lambda k: k.ts_leave)
 
 
 class RMSRestarter(ABC):
@@ -264,6 +274,7 @@ class RMSRestarter(ABC):
         _logger.debug(f"{formatIsoDate(ts)}: finished grace period of node {nodeId}. active meetings: {meetingsLeft}")
         for rm in meetingsLeft:
             newNodeId = self.newNodePolicy.pickNodeForRoom(ts, self.assignments)
+            self.newNodePolicy.nodeOfRoomMeetingChanged(ts, nodeId, newNodeId, rm.id)
             self.assignments.assignRoomMeeting(rm, newNodeId, ts)
             rollout.downtime(ts, rm)
             _logger.debug(f"{formatIsoDate(ts)}: reassigning room meeting {rm.id} from node {nodeId} to node {newNodeId}")
@@ -286,6 +297,20 @@ class RMSRestarter(ABC):
             if restartEventListIndexes[i] < len(restartEventLists[i]):
                 return False
         return True
+
+    def registerPeerConnectionJoined(self, pc: PeerConnection):
+        self.newNodePolicy.peerConnectionAssigned(
+            pc.ts_joined,
+            self.assignments.getCurrentNodeByRmId(pc.rmId, pc.ts_joined),
+            pc.rmId
+        )
+
+    def registerPeerConnectionLeft(self, pc: PeerConnection):
+        self.newNodePolicy.peerConnectionReleased(
+            pc.ts_leave,
+            self.assignments.getCurrentNodeByRmId(pc.rmId, pc.ts_leave),
+            pc.rmId
+        )
 
     def calculateRestarts(self) -> list[RMSRollout]:
         # order meetings by start date and by end date
@@ -312,14 +337,29 @@ class RMSRestarter(ABC):
             self.startRolloutAt
         ))
 
+        pcConnectEvents: list[RMSRestarterEvent] = list(map(
+            lambda pc: RMSRestarterEvent(pc.ts_joined, lambda: self.registerPeerConnectionJoined(pc)),
+            self.sortedMeetings.pcByConnectTs
+        ))
+
+        pcLeaveEvents: list[RMSRestarterEvent] = list(map(
+            lambda pc: RMSRestarterEvent(pc.ts_leave, lambda: self.registerPeerConnectionLeft(pc)),
+            self.sortedMeetings.pcByLeaveTs
+        ))
+
         _logger.info(f"Meeting dates range: {formatIsoDate(self.sortedMeetings.meetingByStartTs[0].ts_start)} - {formatIsoDate(self.sortedMeetings.meetingByFinishTs[-1].ts_finish)}")
 
         restartEventLists: list[list[RMSRestarterEvent]] = [
             meetingStartEvents,
-            meetingFinishEvents,
+            pcConnectEvents,  # first meetings should start, then they should end,
+
+            # everything else in between connects and disconnects
             startRolloutEvents,
             self.finishGraceEvents,
-            self.nodesStartupEvents
+            self.nodesStartupEvents,
+
+            pcLeaveEvents,  # first pcs need to leave then room can be unassigned
+            meetingFinishEvents,
         ]
 
         traverser = MultiListTimestampTraverser(restartEventLists)

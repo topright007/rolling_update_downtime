@@ -5,6 +5,7 @@ from rmsutils import formatIsoDate
 
 
 class PeerConnection(ABC):
+    rmId: str
     room_id: str
     peer_id: str
     ts_joined: float
@@ -12,13 +13,14 @@ class PeerConnection(ABC):
     ts_leave: float
     rmsConnections: list[RMSConnection]
 
-    def __init__(self, rmsConnections: list[RMSConnection]):
+    def __init__(self, rmsConnections: list[RMSConnection], rmId: str):
         self.room_id = rmsConnections[0].room_id
         self.peer_id = rmsConnections[0].peer_id
         self.ts_joined = min(map(lambda conn: conn.ts_joined, rmsConnections))
         self.ts_connected = min(map(lambda conn: conn.ts_connected, rmsConnections))
         self.ts_leave = max(map(lambda conn: conn.ts_leave, rmsConnections))
         self.rmsConnections = rmsConnections
+        self.rmId = rmId
 
     def __str__(self):
         connectionsStr = ''
