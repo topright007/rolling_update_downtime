@@ -139,17 +139,17 @@ class ShardToPeerConnectionAssignmentsCounter(ABC):
     def getNumPCInRoom(self, rmId: str):
         return self.roomToPCNum[rmId] or 0
 
-    def getLeastLoadedNodes(self, nodeFilter: Callable[[int], bool]) -> set[int]:
+    def getLeastLoadedNodes(self, nodeFilter: Callable[[int], bool]) -> list[int]:
         for _, nodes in self.pcNumToNodes.items():
-            result = set()
+            result = []
             for node in nodes:
                 if not nodeFilter(node):
                     continue
-                result.add(node)
+                result.append(node)
             if len(result) > 0:
                 return result
             # otherwise all least loaded nodes are in maintenance. keep searching
-        return set()
+        return []
 
 # check out number of sessions on the nodes and pick the least loaded
 class LeastLoadedNewNodePolicy(ConstantGracePeriodShardedCluster):
@@ -166,7 +166,7 @@ class LeastLoadedNewNodePolicy(ConstantGracePeriodShardedCluster):
 
         assert len(leastLoadedNodes) > 0, "Failed to find any node to pick. Must be a bug"
         randomLeastLoadedIndex = random.randrange(0, len(leastLoadedNodes))
-        return randomLeastLoadedIndex
+        return leastLoadedNodes[randomLeastLoadedIndex]
 
     def pickNodeForRoom(self, ts: float, rmass: RoomMeetingAssignments) -> int:
         return self.pickNodeFromListOfNodes(ts, rmass, self.globalAssignmentCounter)
@@ -187,9 +187,9 @@ class RandomIslandLeastLoadedNewNodePolicy(LeastLoadedNewNodePolicy):
 
     def __init__(self, gracePeriodSec: int, shardsConfig: ShardsConfig):
         super().__init__(gracePeriodSec, shardsConfig)
-        leastLoadedCounters = {}
+        self.leastLoadedCounters = {}
         for numCluster in range(0, len(self.shardsConfig.shards)):
-            leastLoadedCounters[numCluster] = ShardToPeerConnectionAssignmentsCounter(
+            self.leastLoadedCounters[numCluster] = ShardToPeerConnectionAssignmentsCounter(
                 self.shardsConfig.nodesInCluster(numCluster)
             )
 
