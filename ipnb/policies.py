@@ -127,7 +127,7 @@ class ShardToPeerConnectionAssignmentsCounter(ABC):
         oldNodeOldNum = self.nodeToPCNum[oldNode]
         oldNodeNewNum = oldNodeOldNum - numToReassign
         assert oldNodeNewNum >= 0, f"Can not reassign {numToReassign} pcs from node {oldNode} to node {newNode}. {oldNode} only has {oldNodeOldNum} pcs"
-        newNodeOldNum = self.nodeToPCNum[oldNode]
+        newNodeOldNum = self.nodeToPCNum[newNode]
         newNodeNewNum = newNodeOldNum + numToReassign
         self.nodeToPCNum[oldNode] = oldNodeNewNum
         self.nodeToPCNum[newNode] = newNodeNewNum

@@ -43,6 +43,7 @@ class ShardsConfig(ABC):
 
 
 class RoomMeetingAssignments(ABC):
+    lastTs: float
     nodeToRoomMeeting: dict[int, dict[float, list[RoomMeeting]]]
     roomMeetingToNode: dict[str, dict[float, int]]
 
@@ -51,15 +52,16 @@ class RoomMeetingAssignments(ABC):
 
     roomMeetingDict: dict[str, RoomMeeting]
 
-    nodesMaintenance: dict[float, set[int]]
+    nodesMaintenance: set[int]
 
     def __init__(self):
+        self.lastTs = 0
         self.nodeToRoomMeeting = defaultdict(lambda: defaultdict(list))
         self.roomMeetingToNode = defaultdict(lambda: defaultdict(int))
         self.lastNodeDates = {}
         self.lastRMDates = {}
         self.roomMeetingDict = {}
-        self.nodesMaintenance = {}
+        self.nodesMaintenance = set()
 
     def __str__(self):
         nodeToRoomMeetingResult = defaultdict(lambda: defaultdict(list))
@@ -84,6 +86,10 @@ class RoomMeetingAssignments(ABC):
             "lastNodeDates": lastNodeDatesResult,
             "lastRMDates": lastRMDatesResult
         }, indent=2)
+
+    def assertTS(self, ts: float):
+        assert ts >= self.lastTs, f"ts {formatIsoDate(ts)} is less than last ts {formatIsoDate(self.lastTs)}"
+        self.lastTs = ts
 
     def roomMeetingById(self, id: str):
         return self.roomMeetingDict[id]
@@ -159,24 +165,19 @@ class RoomMeetingAssignments(ABC):
                     self.lastRMDates[rm.id] = ts
 
     def getNodesInMaintenance(self, ts: float) -> set[int]:
-        if len(self.nodesMaintenance.keys()) > 0:
-            lastMaintenanceTs = list(self.nodesMaintenance)[-1]
-            assert lastMaintenanceTs <= ts, f"Can not modify maintenance. Last maintenance TS ${lastMaintenanceTs} is newer than ${ts}"
-            return self.nodesMaintenance[lastMaintenanceTs].copy()
-        return set()
+        self.assertTS(ts)
+        return self.nodesMaintenance
 
     def isNodeInMaintenance(self, nodeId: int, ts: float):
-        return nodeId in self.getNodesInMaintenance(ts)
+        return nodeId in self.nodesMaintenance
 
     def startNodeMaintenance(self, node: int, ts: float):
-        nodesInMaintenance = self.getNodesInMaintenance(ts)
-        nodesInMaintenance.add(node)
-        self.nodesMaintenance[ts] = nodesInMaintenance
+        self.assertTS(ts)
+        self.nodesMaintenance.add(node)
 
     def endNodeMaintenance(self, node: int, ts: float):
-        nodesInMaintenance = self.getNodesInMaintenance(ts)
-        nodesInMaintenance.discard(node)
-        self.nodesMaintenance[ts] = nodesInMaintenance
+        self.assertTS(ts)
+        self.nodesMaintenance.discard(node)
 
     def getActiveNodesToPeerConnectionsNum(self, ts: float, nodes: Iterable[int]) -> dict[int, int]:
         result = {}

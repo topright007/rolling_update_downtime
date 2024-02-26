@@ -69,7 +69,8 @@ class MultiListTimestampTraverser:
         return True
 
     def traverse(self):
-        _logger.info(f"Started traversal of events")
+        totalEvents = sum(map(lambda l: len(l), self.restartEventLists))
+        _logger.info(f"Started traversal of events. Total number of events is {totalEvents}")
         eventsCnt = 0
         while not self.lastTsReached():
             minTs: float | None = None
@@ -90,7 +91,7 @@ class MultiListTimestampTraverser:
             if minIndex is not None:
                 if self.lastReportedRealTs is None or (datetime.now() - self.lastReportedRealTs).total_seconds() > 5:
                     self.lastReportedRealTs = datetime.now()
-                    _logger.info(f"Processing event {eventsCnt} at {formatIsoDate(self.restartEventLists[minIndex][self.restartEventListIndexes[minIndex]].ts)}")
+                    _logger.info(f"Events processed: {int(float(eventsCnt)/float(totalEvents)*100.0)}%. Date: {formatIsoDate(self.restartEventLists[minIndex][self.restartEventListIndexes[minIndex]].ts)}. Current event: {eventsCnt}")
                 self.restartEventLists[minIndex][self.restartEventListIndexes[minIndex]].action()
                 self.restartEventListIndexes[minIndex] += 1
                 eventsCnt += 1
@@ -337,11 +338,13 @@ class RMSRestarter(ABC):
             self.startRolloutAt
         ))
 
+        _logger.info(f"Preparing pcConnect events: {len(self.sortedMeetings.pcByConnectTs)}")
         pcConnectEvents: list[RMSRestarterEvent] = list(map(
             lambda pc: RMSRestarterEvent(pc.ts_joined, lambda: self.registerPeerConnectionJoined(pc)),
             self.sortedMeetings.pcByConnectTs
         ))
 
+        _logger.info(f"Preparing pcLeave events: {len(self.sortedMeetings.pcByLeaveTs)}")
         pcLeaveEvents: list[RMSRestarterEvent] = list(map(
             lambda pc: RMSRestarterEvent(pc.ts_leave, lambda: self.registerPeerConnectionLeft(pc)),
             self.sortedMeetings.pcByLeaveTs
