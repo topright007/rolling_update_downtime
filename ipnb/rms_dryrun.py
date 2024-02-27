@@ -26,7 +26,7 @@ ROLLOUT_DT_DURATION = 15
 PEER_IDLE_TIMEOUT_SEC = 60
 NODE_RESTARTS_IN_SEC = 120
 
-DEFAULT_GRACE_PERIOD_SEC = 4*30*60
+DEFAULT_GRACE_PERIOD_SEC = 60
 DEFAULT_DISRUPTION_BUDGET = 3
 
 #to reproduce bugs
@@ -39,6 +39,7 @@ root.info(f"Using random seed {seed}")
 parser = argparse.ArgumentParser()
 parser.add_argument("-r", "--restart-date")
 parser.add_argument("-p", "--policy")
+parser.add_argument("--dt-calc-model")
 parser.add_argument("-d", "--disruption-budget", type=int)
 parser.add_argument("-g", "--grace-period-sec", type=int)
 args = parser.parse_args()
@@ -76,13 +77,28 @@ match policyStr:
         raise f"unknown policy {policyStr}"
 root.info(f"Policy: {policyStr}")
 
+dtModelStr = 'IntegratingDTClacModel'
+if args.dt_calc_model is not None and len(args.dt_calc_model) > 0:
+    dtModelStr = args.dt_calc_model
+root.info(f"DT Calc Model: {dtModelStr}")
+
 calls = pd.read_csv('calls_data_week.tsv', header=0, names=['msid','peer_id', 'room_id', 'rsid', 'ts_connected', 'ts_joined', 'ts_leave', 'ts_offer'], delimiter='\t', nrows=MAX_NUM_ROWS_FOR_DRYRUN)
 root.info(f"Loaded {len(calls)} events")
 roomMeetings: list[RoomMeeting] = loadRoomMeetings(calls, MEETING_ON_SAME_BRIDGE_IDLE_TIMEOUT)
 
 restarter = RMSRestarter(roomMeetings, [restartDate], disruptionBudget, NODE_RESTARTS_IN_SEC, shardsConfig, policy)
 restartResult: list[RMSRollout] = restarter.calculateRestarts()
-chart = IntegratingDTClacModel(restarter.assignments, restartResult, restarter.sortedMeetings, PEER_IDLE_TIMEOUT_SEC).totalDowntime()
+
+dtmodel: DTCalcModel
+match dtModelStr:
+    case 'IntegratingDTClacModel':
+        dtmodel = IntegratingDTClacModel(restarter.assignments, restartResult, restarter.sortedMeetings, PEER_IDLE_TIMEOUT_SEC, ROLLOUT_DT_DURATION)
+    case 'DTOverRolloutPeriod':
+        dtmodel = DTOverRolloutPeriod(restarter.assignments, restartResult, restarter.sortedMeetings, PEER_IDLE_TIMEOUT_SEC, ROLLOUT_DT_DURATION)
+    case _:
+        raise f"unknown dt calculation model {dtModelStr}"
+
+chart = dtmodel.totalDowntime()
 root.info(f"Total downtime is {chart.totalDT}")
-resultFName = f"{policyStr}.grace_{gracePeriodSec}.disr_{disruptionBudget}.at_{restartDateStr[0:19].replace(' ' , 'T')}"
+resultFName = f"{policyStr}.dtmodel_{dtModelStr}.grace_{gracePeriodSec}.disr_{disruptionBudget}.at_{restartDateStr[0:19].replace(' ' , 'T')}"
 chart.serialize(f"{resultFName}.tsv")

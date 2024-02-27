@@ -25,6 +25,7 @@ class RMSRolloutMeetingDowntime(ABC):
 
 class RMSRollout(ABC):
     startTs: float
+    finishTs: float
     #ts - meeting_id -> num_participants
     downtimes: list[RMSRolloutMeetingDowntime]
 
@@ -34,6 +35,9 @@ class RMSRollout(ABC):
 
     def downtime(self, ts: float, rm: RoomMeeting):
         self.downtimes.append(RMSRolloutMeetingDowntime(ts, rm))
+
+    def finish(self, ts: float):
+        self.finishTs = ts
 
 
 @dataclass
@@ -265,6 +269,10 @@ class RMSRestarter(ABC):
         self.assignments.startNodeMaintenance(nodeId, ts)
 
     def disruptNodes(self, ts: float):
+        # this happens when rollout of the last node finishes
+        if self.nextNodeToRollout == self.shardsConfig.numNodesGlobal() and len(self.assignments.nodesMaintenance) == 0:
+            self.rollouts[-1].finish(ts)
+
         while len(self.assignments.getNodesInMaintenance(ts)) < self.disruptionBudget and \
                 self.nextNodeToRollout < self.shardsConfig.numNodesGlobal():
             self.nodeGraceStarted(self.nextNodeToRollout, ts)
@@ -286,6 +294,8 @@ class RMSRestarter(ABC):
         # todo start multiple rollouts. register new downtime report for each
         # todo downtime reports should account for all graces started during the downtime. Even if grace finishes during another downtime
         _logger.debug(f"{formatIsoDate(ts)}: starting rollout. ")
+        if len(self.rollouts) > 0:
+            self.rollouts[-1].finish(ts)
         self.rollouts.append(RMSRollout(startTs=ts))
 
         self.nextNodeToRollout = 0

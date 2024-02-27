@@ -86,29 +86,37 @@ class DTCalcModel(ABC):
     assignments: RoomMeetingAssignments
     rollouts: list[RMSRollout]
     sortedMeetings: RMSSortedMeetings
+    reconnectDowntimeSec: int
 
     def __init__(self, assignments: RoomMeetingAssignments, rollouts: list[RMSRollout],
-                 sortedMeetings: RMSSortedMeetings):
+                 sortedMeetings: RMSSortedMeetings, reconnectDowntimeSec: int):
         self.assignments = assignments
         self.rollouts = rollouts
         self.sortedMeetings = sortedMeetings
+        self.reconnectDowntimeSec = reconnectDowntimeSec
 
     @abstractmethod
     def totalDowntime(self) -> RMSDowntimeChart:
         pass
 
 
-# model that takes the users suffering from DT and adds downtime corresponding to the number of users currently present
-class IntegratingDTClacModel(DTCalcModel):
+class TotalRMandPCGraphingModel(DTCalcModel):
     peerIdleTimeoutSec: int
+    pcBuckets: dict[float, list[PeerConnection]]
+    rmBuckets: dict[float, list[RoomMeeting]]
 
     def __init__(self,
                  assignments: RoomMeetingAssignments,
                  rollouts: list[RMSRollout],
                  sortedMeetings: RMSSortedMeetings,
-                 peerIdleTimeoutSec: int):
-        super().__init__(assignments, rollouts, sortedMeetings)
+                 peerIdleTimeoutSec: int,
+                 reconnectDowntimeSec: int):
+        super().__init__(assignments, rollouts, sortedMeetings, reconnectDowntimeSec)
         self.peerIdleTimeoutSec = peerIdleTimeoutSec
+
+        self.pcBuckets = defaultdict(list)
+        self.rmBuckets = defaultdict(list)
+        self.indexPCsAndRMs()
 
     def floorTime(self, toFloor: float, freqSec: int) -> float:
         epochSeconds = int(toFloor)
@@ -124,33 +132,90 @@ class IntegratingDTClacModel(DTCalcModel):
             buckets[ts].append(toAdd)
             ts += self.peerIdleTimeoutSec
 
-    def totalDowntime(self) -> RMSDowntimeChart:
+    def indexPCsAndRMs(self):
         _logger.info("Starting calculation of total downtime via integrating model")
-        pcBuckets: dict[float, list[PeerConnection]] = defaultdict(list)
-        rmBuckets: dict[float, list[RoomMeeting]] = defaultdict(list)
-
-        # index
         for rm in self.sortedMeetings.meetingByStartTs:
-            self.addToFlooredBuckets(rm.ts_start, rm.ts_finish, rmBuckets, rm)
+            self.addToFlooredBuckets(rm.ts_start, rm.ts_finish, self.rmBuckets, rm)
             for pc in rm.peerConnections:
-                self.addToFlooredBuckets(pc.ts_joined, pc.ts_leave, pcBuckets, pc)
+                self.addToFlooredBuckets(pc.ts_joined, pc.ts_leave, self.pcBuckets, pc)
         _logger.info("Finished indexing of active users by time buckets")
 
+    def addDTDelta(self, dtIncrements: dict[float, RMSDowntimeDT], ts: float, deltaDT: float, rmInterrupted: int, pcInterrupted: int):
+        ts_floor = self.floorTime(ts, self.peerIdleTimeoutSec)
+        num_pc = len(self.pcBuckets[ts_floor])
+        num_rm = len(self.rmBuckets[ts_floor])
+
+        theDt = dtIncrements[ts_floor]
+        theDt.ts = ts_floor
+        theDt.pcTotal = num_pc
+        theDt.rmTotal = num_rm
+        theDt.dt += deltaDT
+        theDt.rmInterrupted += rmInterrupted
+        theDt.pcInterrupted += pcInterrupted
+
+
+# model that takes the users suffering from DT and adds downtime corresponding to the number of users currently present
+class IntegratingDTClacModel(TotalRMandPCGraphingModel):
+    peerIdleTimeoutSec: int
+
+    def __init__(self,
+                 assignments: RoomMeetingAssignments,
+                 rollouts: list[RMSRollout],
+                 sortedMeetings: RMSSortedMeetings,
+                 peerIdleTimeoutSec: int,
+                 reconnectDowntimeSec: int):
+        super().__init__(assignments, rollouts, sortedMeetings, peerIdleTimeoutSec, reconnectDowntimeSec)
+
+    def totalDowntime(self) -> RMSDowntimeChart:
         dtIncrements: dict[float, RMSDowntimeDT] = defaultdict(lambda: RMSDowntimeDT())
         for rollout in self.rollouts:
             for dt in rollout.downtimes:
-                dt_floor = self.floorTime(dt.ts, self.peerIdleTimeoutSec)
-                num_pc = len(pcBuckets[dt_floor])
-                num_rm = len(rmBuckets[dt_floor])
-                dtDelta = float(len(dt.rm.peerConnections)) / float(num_pc)
+                ts_floor = self.floorTime(dt.ts, self.peerIdleTimeoutSec)
+                num_pc = len(self.pcBuckets[ts_floor])
+                dtDelta = float(len(dt.rm.peerConnections)) * float(self.reconnectDowntimeSec) / float(num_pc)
 
-                theDt = dtIncrements[dt_floor]
-                theDt.ts = dt_floor
-                theDt.pcTotal = num_pc
-                theDt.rmTotal = num_rm
-                theDt.dt += dtDelta
-                theDt.rmInterrupted += 1
-                theDt.pcInterrupted += len(dt.rm.peerConnections)
+                self.addDTDelta(
+                    dtIncrements,
+                    dt.ts,
+                    dtDelta,
+                    1,
+                    len(dt.rm.peerConnections)
+                )
 
         _logger.info("Finished calculation of total downtime in integrating model")
         return RMSDowntimeChart(unorderedData=dtIncrements)
+
+
+class DTOverRolloutPeriod(IntegratingDTClacModel):
+    def __init__(self,
+                 assignments: RoomMeetingAssignments,
+                 rollouts: list[RMSRollout],
+                 sortedMeetings: RMSSortedMeetings,
+                 peerIdleTimeoutSec: int,
+                 reconnectDowntimeSec: int):
+        super().__init__(assignments, rollouts, sortedMeetings, peerIdleTimeoutSec, reconnectDowntimeSec)
+
+    def totalDowntime(self) -> RMSDowntimeChart:
+        allDtIncrements: dict[float, RMSDowntimeDT] = defaultdict(lambda: RMSDowntimeDT())
+        for rollout in self.rollouts:
+            dtIncrements: dict[float, RMSDowntimeDT] = defaultdict(lambda: RMSDowntimeDT())
+            totalUserSeconds = 0
+            rollout_start_ts_floor = self.floorTime(rollout.startTs, self.peerIdleTimeoutSec)
+            rollout_finish_ts_floor = self.floorTime(rollout.finishTs + self.peerIdleTimeoutSec, self.peerIdleTimeoutSec)
+            for ts_floor, peerConnections in self.rmBuckets.items():
+                if rollout_start_ts_floor <= ts_floor <= rollout_finish_ts_floor:
+                    totalUserSeconds += len(peerConnections) * self.peerIdleTimeoutSec
+
+            for dt in rollout.downtimes:
+                deltaDT = float(len(dt.rm.peerConnections)*self.reconnectDowntimeSec)
+                ts_floor = self.floorTime(dt.ts, self.peerIdleTimeoutSec)
+                num_pc = len(self.pcBuckets[ts_floor])
+                self.addDTDelta(dtIncrements, dt.ts, deltaDT, 1, num_pc)
+
+            # normalize by the total number of user*seconds there were in the rollout
+            for ts in dtIncrements.keys():
+                dtIncrements[ts].dt = dtIncrements[ts].dt / float(totalUserSeconds)
+            allDtIncrements.update(dtIncrements)
+
+        _logger.info("Finished calculation of total downtime via normalization over rollout period")
+        return RMSDowntimeChart(unorderedData=allDtIncrements)
