@@ -1,3 +1,5 @@
+import datetime
+from datetime import timedelta
 from abc import ABC, abstractmethod
 
 import pandas as pd
@@ -186,7 +188,36 @@ class IntegratingDTClacModel(TotalRMandPCGraphingModel):
         return RMSDowntimeChart(unorderedData=dtIncrements)
 
 
-class DTOverRolloutPeriod(IntegratingDTClacModel):
+class DTOverTimePeriod(TotalRMandPCGraphingModel):
+    def __init__(self,
+                 assignments: RoomMeetingAssignments,
+                 rollouts: list[RMSRollout],
+                 sortedMeetings: RMSSortedMeetings,
+                 peerIdleTimeoutSec: int,
+                 reconnectDowntimeSec: int):
+        super().__init__(assignments, rollouts, sortedMeetings, peerIdleTimeoutSec, reconnectDowntimeSec)
+
+    def totalDowntimeOfRolloutForPeriod(self, allDtIncrements: dict[float, RMSDowntimeDT], rollout: RMSRollout, periodStart: float, periodEnd: float):
+        totalUserSeconds = 0
+        dtIncrements: dict[float, RMSDowntimeDT] = defaultdict(lambda: RMSDowntimeDT())
+        for ts_floor, peerConnections in self.rmBuckets.items():
+            if periodStart <= ts_floor <= periodEnd:
+                totalUserSeconds += len(peerConnections) * self.peerIdleTimeoutSec
+
+        for dt in rollout.downtimes:
+            deltaDT = float(len(dt.rm.peerConnections)*self.reconnectDowntimeSec)
+            ts_floor = self.floorTime(dt.ts, self.peerIdleTimeoutSec)
+            num_pc = len(self.pcBuckets[ts_floor])
+            self.addDTDelta(dtIncrements, dt.ts, deltaDT, 1, num_pc)
+
+        # normalize by the total number of user*seconds there were in the rollout
+        for ts in dtIncrements.keys():
+            dtIncrements[ts].dt = dtIncrements[ts].dt / float(totalUserSeconds)
+
+        allDtIncrements.update(dtIncrements)
+
+
+class DTOverRolloutPeriod(DTOverTimePeriod):
     def __init__(self,
                  assignments: RoomMeetingAssignments,
                  rollouts: list[RMSRollout],
@@ -198,24 +229,36 @@ class DTOverRolloutPeriod(IntegratingDTClacModel):
     def totalDowntime(self) -> RMSDowntimeChart:
         allDtIncrements: dict[float, RMSDowntimeDT] = defaultdict(lambda: RMSDowntimeDT())
         for rollout in self.rollouts:
-            dtIncrements: dict[float, RMSDowntimeDT] = defaultdict(lambda: RMSDowntimeDT())
-            totalUserSeconds = 0
             rollout_start_ts_floor = self.floorTime(rollout.startTs, self.peerIdleTimeoutSec)
             rollout_finish_ts_floor = self.floorTime(rollout.finishTs + self.peerIdleTimeoutSec, self.peerIdleTimeoutSec)
-            for ts_floor, peerConnections in self.rmBuckets.items():
-                if rollout_start_ts_floor <= ts_floor <= rollout_finish_ts_floor:
-                    totalUserSeconds += len(peerConnections) * self.peerIdleTimeoutSec
 
-            for dt in rollout.downtimes:
-                deltaDT = float(len(dt.rm.peerConnections)*self.reconnectDowntimeSec)
-                ts_floor = self.floorTime(dt.ts, self.peerIdleTimeoutSec)
-                num_pc = len(self.pcBuckets[ts_floor])
-                self.addDTDelta(dtIncrements, dt.ts, deltaDT, 1, num_pc)
+            self.totalDowntimeOfRolloutForPeriod(allDtIncrements, rollout, rollout_start_ts_floor, rollout_finish_ts_floor)
 
-            # normalize by the total number of user*seconds there were in the rollout
-            for ts in dtIncrements.keys():
-                dtIncrements[ts].dt = dtIncrements[ts].dt / float(totalUserSeconds)
-            allDtIncrements.update(dtIncrements)
+        _logger.info("Finished calculation of total downtime via normalization over rollout period")
+        return RMSDowntimeChart(unorderedData=allDtIncrements)
+
+
+class DTOverTheWholeWeek(DTOverTimePeriod):
+    def __init__(self,
+                 assignments: RoomMeetingAssignments,
+                 rollouts: list[RMSRollout],
+                 sortedMeetings: RMSSortedMeetings,
+                 peerIdleTimeoutSec: int,
+                 reconnectDowntimeSec: int):
+        super().__init__(assignments, rollouts, sortedMeetings, peerIdleTimeoutSec, reconnectDowntimeSec)
+
+    def totalDowntime(self) -> RMSDowntimeChart:
+        allDtIncrements: dict[float, RMSDowntimeDT] = defaultdict(lambda: RMSDowntimeDT())
+        for rollout in self.rollouts:
+            rolloutStartDate = datetime.fromtimestamp(rollout.startTs).date()
+            rolloutStartWeekDate = rolloutStartDate - timedelta(days=rolloutStartDate.weekday())
+            rolloutEndWeekDate = rolloutStartDate + timedelta(days=7)
+            rolloutStartWeekDateTime = datetime.fromisoformat(rolloutStartWeekDate.isoformat())
+            rolloutEndWeekDateTime = datetime.fromisoformat(rolloutEndWeekDate.isoformat())
+            week_start_ts_floor = self.floorTime(rolloutStartWeekDateTime.timestamp(), self.peerIdleTimeoutSec)
+            week_finish_ts_floor = self.floorTime(rolloutEndWeekDateTime.timestamp() + self.peerIdleTimeoutSec, self.peerIdleTimeoutSec)
+
+            self.totalDowntimeOfRolloutForPeriod(allDtIncrements, rollout, week_start_ts_floor, week_finish_ts_floor)
 
         _logger.info("Finished calculation of total downtime via normalization over rollout period")
         return RMSDowntimeChart(unorderedData=allDtIncrements)

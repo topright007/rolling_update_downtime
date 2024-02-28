@@ -95,6 +95,8 @@ match dtModelStr:
         dtmodel = IntegratingDTClacModel(restarter.assignments, restartResult, restarter.sortedMeetings, PEER_IDLE_TIMEOUT_SEC, ROLLOUT_DT_DURATION)
     case 'DTOverRolloutPeriod':
         dtmodel = DTOverRolloutPeriod(restarter.assignments, restartResult, restarter.sortedMeetings, PEER_IDLE_TIMEOUT_SEC, ROLLOUT_DT_DURATION)
+    case 'DTOverTheWholeWeek':
+        dtmodel = DTOverTheWholeWeek(restarter.assignments, restartResult, restarter.sortedMeetings, PEER_IDLE_TIMEOUT_SEC, ROLLOUT_DT_DURATION)
     case _:
         raise f"unknown dt calculation model {dtModelStr}"
 
