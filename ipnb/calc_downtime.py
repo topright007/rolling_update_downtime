@@ -102,5 +102,5 @@ match dtModelStr:
 
 chart = dtmodel.totalDowntime()
 root.info(f"Total downtime is {chart.totalDT}")
-resultFName = f"{policyStr}.dtmodel_{dtModelStr}.grace_{gracePeriodSec}.disr_{disruptionBudget}.at_{restartDateStr[0:19].replace(' ' , 'T')}"
+resultFName = f"result_{policyStr}.dtmodel_{dtModelStr}.grace_{gracePeriodSec}.disr_{disruptionBudget}.at_{restartDateStr[0:19].replace(' ' , 'T')}"
 chart.serialize(f"{resultFName}.tsv")
