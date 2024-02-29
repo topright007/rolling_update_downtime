@@ -101,6 +101,12 @@ match dtModelStr:
         raise f"unknown dt calculation model {dtModelStr}"
 
 chart = dtmodel.totalDowntime()
+chart.populateRolloutParameters(
+    policyStr=policyStr,
+    dtModelStr=dtModelStr,
+    gracePeriodSec=gracePeriodSec,
+    disruptionBudget=disruptionBudget,
+    restartDateStr=restartDateStr
+)
 root.info(f"Total downtime is {chart.totalDT}")
-resultFName = f"result_{policyStr}.dtmodel_{dtModelStr}.grace_{gracePeriodSec}.disr_{disruptionBudget}.at_{restartDateStr[0:19].replace(' ' , 'T')}"
-chart.serialize(f"{resultFName}.tsv")
+chart.serialize()

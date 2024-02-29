@@ -2,6 +2,7 @@ import datetime
 from datetime import timedelta
 from abc import ABC, abstractmethod
 
+import jsons
 import pandas as pd
 
 from RoomMeetingAssignments import *
@@ -35,8 +36,19 @@ class RMSDowntimeChart(ABC):
     pcInterrupted: list[int]
     dts: list[float]
     totalDT: float
+    rolloutBoundaries: list[tuple[float, float]]
 
-    def __init__(self, unorderedData: dict[float, RMSDowntimeDT] = None, sourceFname: str = None):
+    policyStr: str
+    dtModelStr: str
+    gracePeriodSec: int
+    disruptionBudget: int
+    restartDateStr: str
+
+    def __init__(self,
+                 unorderedData: dict[float, RMSDowntimeDT] = None,
+                 restartResult: list[RMSRollout] = None
+                 ):
+
         self.dates = []
         self.datetimes = []
         self.dts = []
@@ -44,44 +56,48 @@ class RMSDowntimeChart(ABC):
         self.rmTotal = []
         self.rmInterrupted = []
         self.pcInterrupted = []
+        self.rolloutBoundaries = []
         self.totalDT = 0
-        if unorderedData is not None:
-            for date, dt in sorted(unorderedData.items()):
-                self.dates.append(date)
-                self.datetimes.append(datetime.fromtimestamp(date))
-                self.dts.append(dt.dt)
-                self.pcTotal.append(dt.pcTotal)
-                self.rmTotal.append(dt.rmTotal)
-                self.rmInterrupted.append(dt.rmInterrupted)
-                self.pcInterrupted.append(dt.pcInterrupted)
-                self.totalDT += dt.dt
-        elif sourceFname is not None:
-            self.parse(sourceFname)
-        else:
-            raise "unorderedData or sourceFname are required"
 
-    def serialize(self, fname: str):
-        df = pd.DataFrame(data={'dates': self.dates,
-                                'dts': self.dts,
-                                'rmTotal': self.rmTotal,
-                                'rmInterrupted': self.rmInterrupted,
-                                'pcTotal': self.pcTotal,
-                                'pcInterrupted': self.pcInterrupted}
-                          )
-        df.to_csv(fname, index=False, sep='\t')
+        if unorderedData is None:
+            return
 
-    def parse(self, fname: str):
-        df = pd.read_csv(fname, header=0,
-                    names=['dates', 'dts', 'rmTotal', 'rmInterrupted',  'pcTotal',  'pcInterrupted'],
-                    delimiter='\t')
-        self.dates = list(map(lambda dat: float(dat), df['dates']))
-        self.datetimes = list(map(lambda dat: datetime.fromtimestamp(dat), self.dates))
-        self.dts = df['dts']
-        self.pcTotal = df['pcTotal']
-        self.rmTotal = df['rmTotal']
-        self.pcInterrupted = df['pcInterrupted']
-        self.rmInterrupted = df['rmInterrupted']
-        self.totalDT = sum(self.dts)
+        for date, dt in sorted(unorderedData.items()):
+            self.dates.append(date)
+            self.datetimes.append(datetime.fromtimestamp(date))
+            self.dts.append(dt.dt)
+            self.pcTotal.append(dt.pcTotal)
+            self.rmTotal.append(dt.rmTotal)
+            self.rmInterrupted.append(dt.rmInterrupted)
+            self.pcInterrupted.append(dt.pcInterrupted)
+            self.totalDT += dt.dt
+        for rollout in restartResult:
+            self.rolloutBoundaries.append((rollout.startTs, rollout.finishTs))
+
+
+    def populateRolloutParameters(self,
+                                  policyStr: str,
+                                  dtModelStr: str,
+                                  gracePeriodSec: int,
+                                  disruptionBudget: int,
+                                  restartDateStr: str):
+        self.policyStr = policyStr
+        self.dtModelStr = dtModelStr
+        self.gracePeriodSec = gracePeriodSec
+        self.disruptionBudget = disruptionBudget
+        self.restartDateStr = restartDateStr
+
+    def serialize(self, fname: str = None):
+        if fname is None:
+            fname = f"result_{self.policyStr}.dtmodel_{self.dtModelStr}.grace_{self.gracePeriodSec}.disr_{self.disruptionBudget}.at_{self.restartDateStr[0:19].replace(' ' , 'T')}.json"
+        jsonStr = jsons.dumps(self)
+        with open(fname, "w") as text_file:
+            text_file.write(jsonStr)
+
+    def parse(fname: str):
+        with open(fname, "r") as text_file:
+            jsonstr = text_file.read()
+            return jsons.loads(jsonstr, cls=RMSDowntimeChart)
 
 
 class DTCalcModel(ABC):
@@ -185,7 +201,7 @@ class IntegratingDTClacModel(TotalRMandPCGraphingModel):
                 )
 
         _logger.info("Finished calculation of total downtime in integrating model")
-        return RMSDowntimeChart(unorderedData=dtIncrements)
+        return RMSDowntimeChart(unorderedData=dtIncrements, restartResult=self.rollouts)
 
 
 class DTOverTimePeriod(TotalRMandPCGraphingModel):
@@ -235,7 +251,7 @@ class DTOverRolloutPeriod(DTOverTimePeriod):
             self.totalDowntimeOfRolloutForPeriod(allDtIncrements, rollout, rollout_start_ts_floor, rollout_finish_ts_floor)
 
         _logger.info("Finished calculation of total downtime via normalization over rollout period")
-        return RMSDowntimeChart(unorderedData=allDtIncrements)
+        return RMSDowntimeChart(unorderedData=allDtIncrements, restartResult=self.rollouts)
 
 
 class DTOverTheWholeWeek(DTOverTimePeriod):
@@ -261,4 +277,4 @@ class DTOverTheWholeWeek(DTOverTimePeriod):
             self.totalDowntimeOfRolloutForPeriod(allDtIncrements, rollout, week_start_ts_floor, week_finish_ts_floor)
 
         _logger.info("Finished calculation of total downtime via normalization over rollout period")
-        return RMSDowntimeChart(unorderedData=allDtIncrements)
+        return RMSDowntimeChart(unorderedData=allDtIncrements, restartResult=self.rollouts)
