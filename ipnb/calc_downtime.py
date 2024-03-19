@@ -17,8 +17,8 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 handler.setFormatter(formatter)
 root.addHandler(handler)
 
-MAX_NUM_ROWS_FOR_DRYRUN = 50000
-# MAX_NUM_ROWS_FOR_DRYRUN = 5000000000000
+# MAX_NUM_ROWS_FOR_DRYRUN = 50000
+MAX_NUM_ROWS_FOR_DRYRUN = 5000000000000
 shardsConfig = ShardsConfig([10]*3)
 
 MEETING_ON_SAME_BRIDGE_IDLE_TIMEOUT = 60
@@ -97,6 +97,8 @@ match dtModelStr:
         dtmodel = DTOverRolloutPeriod(restarter.assignments, restartResult, restarter.sortedMeetings, PEER_IDLE_TIMEOUT_SEC, ROLLOUT_DT_DURATION)
     case 'DTOverTheWholeWeek':
         dtmodel = DTOverTheWholeWeek(restarter.assignments, restartResult, restarter.sortedMeetings, PEER_IDLE_TIMEOUT_SEC, ROLLOUT_DT_DURATION)
+    case 'TotalDTCalcModel':
+        dtmodel = TotalDTCalcModel(restarter.assignments, restartResult, restarter.sortedMeetings, PEER_IDLE_TIMEOUT_SEC, ROLLOUT_DT_DURATION)
     case _:
         raise f"unknown dt calculation model {dtModelStr}"
 

@@ -216,7 +216,7 @@ class DTOverTimePeriod(TotalRMandPCGraphingModel):
     def totalDowntimeOfRolloutForPeriod(self, allDtIncrements: dict[float, RMSDowntimeDT], rollout: RMSRollout, periodStart: float, periodEnd: float):
         totalUserSeconds = 0
         dtIncrements: dict[float, RMSDowntimeDT] = defaultdict(lambda: RMSDowntimeDT())
-        for ts_floor, peerConnections in self.rmBuckets.items():
+        for ts_floor, peerConnections in self.pcBuckets.items():
             if periodStart <= ts_floor <= periodEnd:
                 totalUserSeconds += len(peerConnections) * self.peerIdleTimeoutSec
 
@@ -277,4 +277,26 @@ class DTOverTheWholeWeek(DTOverTimePeriod):
             self.totalDowntimeOfRolloutForPeriod(allDtIncrements, rollout, week_start_ts_floor, week_finish_ts_floor)
 
         _logger.info("Finished calculation of total downtime via normalization over rollout period")
+        return RMSDowntimeChart(unorderedData=allDtIncrements, restartResult=self.rollouts)
+
+
+class TotalDTCalcModel(DTOverTimePeriod):
+    def __init__(self,
+                 assignments: RoomMeetingAssignments,
+                 rollouts: list[RMSRollout],
+                 sortedMeetings: RMSSortedMeetings,
+                 peerIdleTimeoutSec: int,
+                 reconnectDowntimeSec: int):
+        super().__init__(assignments, rollouts, sortedMeetings, peerIdleTimeoutSec, reconnectDowntimeSec)
+
+    def totalDowntime(self) -> RMSDowntimeChart:
+        allDtIncrements: dict[float, RMSDowntimeDT] = defaultdict(lambda: RMSDowntimeDT())
+        for rollout in self.rollouts:
+            for dt in rollout.downtimes:
+                deltaDT = float(len(dt.rm.peerConnections) * self.reconnectDowntimeSec)
+                ts_floor = self.floorTime(dt.ts, self.peerIdleTimeoutSec)
+                num_pc = len(self.pcBuckets[ts_floor])
+                self.addDTDelta(allDtIncrements, dt.ts, deltaDT, 1, num_pc)
+
+        _logger.info("Finished calculation of total downtime via TotalDTCalcModel")
         return RMSDowntimeChart(unorderedData=allDtIncrements, restartResult=self.rollouts)
